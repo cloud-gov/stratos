@@ -1,6 +1,6 @@
 module github.com/cloudfoundry-incubator/stratos/src/jetstream
 
-go 1.18
+go 1.18.1
 
 replace (
 	github.com/SermoDigital/jose => github.com/SermoDigital/jose v0.9.2-0.20180104203859-803625baeddc
