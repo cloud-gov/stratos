@@ -25,7 +25,8 @@ const defaultPaginationEntityState: PaginationEntityState = {
   },
   maxedState: {
     isMaxedMode: false
-  }
+  },
+  isListPagination: false
 };
 
 export function getDefaultPaginationEntityState(ignoreMaxed?: boolean): PaginationEntityState {
@@ -76,7 +77,7 @@ function paginationResetAllPaginationSections(state: PaginationState, entityKey:
  */
 function paginationResetPaginationSection(state: PaginationState, paginationKey: string, entityKey: string): PaginationEntityTypeState {
 
-  const paginationSection = state[entityKey][paginationKey]
+  const paginationSection = state[entityKey][paginationKey];
   if (!paginationSection) {
     return;
   }
@@ -100,7 +101,7 @@ function paginationResetPaginationState(oldEntityState: PaginationEntityState) {
     pageCount,
     currentPage,
     totalResults,
-  }
+  };
   return entityState;
 }
 
@@ -112,7 +113,7 @@ export function resetEndpointEntities(state: PaginationState, action: EndpointAc
         return {
           ...prevState,
           [entityKey]: paginationResetAllPaginationSections(prevState, entityKey)
-        }
+        };
       }
       return prevState;
     }, state);

@@ -9,5 +9,24 @@ import { IAuthForm } from '../../../../../../store/src/extension-types';
   styleUrls: ['./credentials-auth-form.component.scss']
 })
 export class CredentialsAuthFormComponent implements IAuthForm {
+
+  showPassword = false;
+
+  // Custom labels for the input fields
+  pConfig: any = {
+    usernameLabel: 'Username',
+    passwordLabel: 'Password'
+  };
+
   @Input() formGroup: FormGroup;
+
+  get config(): any {
+    return this.pConfig;
+  }
+
+  @Input() set config(v: any) {
+    if (v) {
+      this.pConfig = v;
+    }
+  }
 }

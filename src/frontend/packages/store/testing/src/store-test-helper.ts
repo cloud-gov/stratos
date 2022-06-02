@@ -1,6 +1,6 @@
 import { ModuleWithProviders } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Store, StoreModule } from '@ngrx/store';
+import { Store, StoreModule, StoreRootModule } from '@ngrx/store';
 import {
   appReducers,
   AppState,
@@ -46,7 +46,12 @@ export const testSCFEndpoint: EndpointModel = {
   cnsi_type: 'cf',
   system_shared_token: false,
   sso_allowed: false,
-  metricsAvailable: false
+  metricsAvailable: false,
+  creator: {
+    name: 'admin',
+    admin: true,
+    system: false
+  }
 };
 
 export const testSessionData: SessionData = {
@@ -167,6 +172,8 @@ function getDefaultInitialTestStratosStoreState() {
       themeKey: null,
       headerEventMinimized: true,
       gravatarEnabled: false,
+      homeLayout: 0,
+      homeShowAllEndpoints: true,
     },
     lists: {},
     routing: {
@@ -233,12 +240,13 @@ function getDefaultInitialTestStoreState(): AppState<BaseEntityValues> {
               items: {}
             },
           },
-          maxedState: {}
+          maxedState: {},
+          isListPagination: true
         }
       },
       metrics: {},
       stratosUserProfile: {},
-      stratosUserFavorites: {}
+      stratosUserFavorites: {},
     },
     request: {
       stratosUserProfile: {},
@@ -296,6 +304,11 @@ function getDefaultInitialTestStoreState(): AppState<BaseEntityValues> {
             name: 'admin',
             admin: true
           },
+          creator: {
+            name: 'admin',
+            admin: true,
+            system: false
+          },
           connectionStatus: 'connected',
           system_shared_token: false,
           metricsAvailable: false
@@ -334,7 +347,7 @@ function getDefaultInitialTestStoreState(): AppState<BaseEntityValues> {
 
 export function createBasicStoreModule(
   initialState: Partial<AppState<BaseEntityValues>> = getDefaultInitialTestStoreState()
-): ModuleWithProviders {
+): ModuleWithProviders<StoreRootModule> {
   return StoreModule.forRoot(
     appReducers,
     {
@@ -343,7 +356,7 @@ export function createBasicStoreModule(
   );
 }
 
-export function createEmptyStoreModule(): ModuleWithProviders {
+export function createEmptyStoreModule(): ModuleWithProviders<StoreRootModule> {
   return StoreModule.forRoot(
     appReducers, { runtimeChecks: { strictStateImmutability: false, strictActionImmutability: false } }
   );
@@ -390,7 +403,9 @@ export function createEntityStoreState(entityMap: Map<EntityCatalogEntityConfig,
   }, getDefaultInitialTestStoreState());
 }
 
-export function createEntityStore(entityMap: Map<EntityCatalogEntityConfig, Array<TestStoreEntity | string>>): ModuleWithProviders {
+export function createEntityStore(
+  entityMap: Map<EntityCatalogEntityConfig, Array<TestStoreEntity | string>>
+): ModuleWithProviders<StoreRootModule> {
   const initialState = createEntityStoreState(entityMap);
   return createBasicStoreModule(initialState);
 }

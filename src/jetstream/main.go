@@ -19,9 +19,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/custombinder"
+	_ "github.com/cloudfoundry-incubator/stratos/src/jetstream/docs"
 
 	"bitbucket.org/liamstask/goose/lib/goose"
 	"github.com/antonlindstrom/pgstore"
@@ -29,14 +33,16 @@ import (
 	cfenv "github.com/cloudfoundry-community/go-cfenv"
 	"github.com/gorilla/sessions"
 	"github.com/govau/cf-common/env"
-	"github.com/labstack/echo"
-	"github.com/labstack/echo/middleware"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/nwmac/sqlitestore"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
+	echoSwagger "github.com/swaggo/echo-swagger"
 
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/crypto"
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/datastore"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/factory"
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/apikeys"
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/cnsis"
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/console_config"
@@ -47,11 +53,29 @@ import (
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/tokens"
 )
 
+// @title Stratos API
+// @version 1.0
+// @description Stratos backend API.
+
+// @contact.name Stratos maintainers
+// @contact.url https://github.com/cloudfoundry/stratos/issues
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @tag.name admin
+// @tag.description Endpoints that require admin permissions
+
+// @BasePath /api/v1
+// @securityDefinitions.apikey ApiKeyAuth
+// @in header
+// @name Authentication
+
 // TimeoutBoundary represents the amount of time we'll wait for the database
 // server to come online before we bail out.
 const (
 	TimeoutBoundary      = 10
-	SessionExpiry        = 20 * 60 // Session cookies expire after 20 minutes
+	SessionExpiry        = 20 // Default value for session cookies expiration (20 minutes)
 	UpgradeVolume        = "UPGRADE_VOLUME"
 	UpgradeLockFileName  = "UPGRADE_LOCK_FILENAME"
 	LogToJSON            = "LOG_TO_JSON"
@@ -224,8 +248,16 @@ func main() {
 		}
 	}
 
+	sSessionExpiry := envLookup.String("SESSION_STORE_EXPIRY", strconv.Itoa(SessionExpiry))
+	sessionExpiry, err := strconv.Atoi(sSessionExpiry)
+	if err != nil {
+		sessionExpiry = SessionExpiry
+	}
+	log.Infof("Session expiration (minutes): %d", sessionExpiry)
+	// Convert to seconds
+	sessionExpiry *= 60
 	// Initialize session store for Gorilla sessions
-	sessionStore, sessionStoreOptions, err := initSessionStore(databaseConnectionPool, dc.DatabaseProvider, portalConfig, SessionExpiry, envLookup)
+	sessionStore, sessionStoreOptions, err := initSessionStore(databaseConnectionPool, dc.DatabaseProvider, portalConfig, sessionExpiry, envLookup)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -260,6 +292,10 @@ func main() {
 	// Setup the global interface for the proxy
 	portalProxy := newPortalProxy(portalConfig, databaseConnectionPool, sessionStore, sessionStoreOptions, envLookup)
 	portalProxy.SessionDataStore = sessionDataStore
+
+	store := factory.NewDefaultStoreFactory(databaseConnectionPool)
+	portalProxy.SetStoreFactory(store)
+
 	log.Info("Initialization complete.")
 
 	c := make(chan os.Signal, 2)
@@ -341,7 +377,7 @@ func main() {
 		log.Info("Console does not have a complete configuration - going to enter setup mode (adding `setup` route and middleware)")
 	} else {
 		needSetupMiddleware = false
-		showStratosConfig(portalProxy.Config.ConsoleConfig)
+		showStratosConfig(portalProxy, portalProxy.Config.ConsoleConfig)
 		showSSOConfig(portalProxy)
 	}
 
@@ -409,21 +445,13 @@ func initialiseConsoleConfiguration(portalProxy *portalProxy) error {
 	return nil
 }
 
-func showStratosConfig(config *interfaces.ConsoleConfig) {
+func showStratosConfig(portalProxy *portalProxy, config *interfaces.ConsoleConfig) {
 	log.Infof("Stratos is initialized with the following setup:")
 	log.Infof("... Auth Endpoint Type      : %s", config.AuthEndpointType)
-	if val, found := interfaces.AuthEndpointTypes[config.AuthEndpointType]; found {
-		if val == interfaces.Local {
-			log.Infof("... Local User              : %s", config.LocalUser)
-			log.Infof("... Local User Scope        : %s", config.LocalUserScope)
-		} else { //Auth type is set to remote
-			log.Infof("... UAA Endpoint            : %s", config.UAAEndpoint)
-			log.Infof("... Authorization Endpoint  : %s", config.AuthorizationEndpoint)
-			log.Infof("... Console Client          : %s", config.ConsoleClient)
-			log.Infof("... Admin Scope             : %s", config.ConsoleAdminScope)
-			log.Infof("... Use SSO Login           : %t", config.UseSSO)
-		}
-	}
+
+	// Ask the auto provider to display their config
+	portalProxy.StratosAuthService.ShowConfig(config)
+
 	log.Infof("... Skip SSL Validation     : %t", config.SkipSSLValidation)
 	log.Infof("... Setup Complete          : %t", config.IsSetupComplete())
 }
@@ -433,7 +461,7 @@ func showSSOConfig(portalProxy *portalProxy) {
 	log.Infof("SSO Configuration:")
 	log.Infof("... SSO Enabled             : %t", portalProxy.Config.SSOLogin)
 	log.Infof("... SSO Options             : %s", portalProxy.Config.SSOOptions)
-	log.Infof("... SSO Redirect Whitelist  : %s", portalProxy.Config.SSOWhiteList)
+	log.Infof("... SSO Redirect Allow-list : %s", portalProxy.Config.SSOAllowList)
 }
 
 func getEncryptionKey(pc interfaces.PortalConfig) ([]byte, error) {
@@ -576,7 +604,7 @@ func loadPortalConfig(pc interfaces.PortalConfig, env *env.VarSet) (interfaces.P
 		if endpointTypeSupported {
 			pc.AuthEndpointType = string(val)
 		} else {
-			return pc, fmt.Errorf("AUTH_ENDPOINT_TYPE: %v is not valid. Must be set to local or remote (defaults to remote)", val)
+			return pc, fmt.Errorf("AUTH_ENDPOINT_TYPE: '%v' is not valid. Must be set to local or remote (defaults to remote)", pc.AuthEndpointType)
 		}
 	}
 
@@ -661,8 +689,14 @@ func newPortalProxy(pc interfaces.PortalConfig, dcp *sql.DB, ss HttpSessionStore
 
 	// Setting default value for APIKeysEnabled
 	if pc.APIKeysEnabled == "" {
-		log.Debug(`APIKeysEnabled not set, setting to "admin_only"`)
+		log.Info(`APIKeysEnabled not set, setting to "admin_only"`)
 		pc.APIKeysEnabled = config.APIKeysConfigEnum.AdminOnly
+	}
+
+	// Setting default value for UserEndpointsEnabled
+	if pc.UserEndpointsEnabled == "" {
+		log.Info(`UserEndpointsEnabled not set, setting to "disabled"`)
+		pc.UserEndpointsEnabled = config.UserEndpointsConfigEnum.Disabled
 	}
 
 	pp := &portalProxy{
@@ -682,6 +716,36 @@ func newPortalProxy(pc interfaces.PortalConfig, dcp *sql.DB, ss HttpSessionStore
 	pp.AddAuthProvider(interfaces.AuthTypeHttpBasic, interfaces.AuthProvider{
 		Handler:  pp.doHttpBasicFlowRequest,
 		UserInfo: pp.GetCNSIUserFromBasicToken,
+	})
+
+	// No authentication
+	pp.AddAuthProvider(interfaces.AuthConnectTypeNone, interfaces.AuthProvider{
+		Handler:  pp.doNoAuthFlowRequest,
+		UserInfo: pp.getCNSIUserForNoAuth,
+	})
+
+	// Generic Bearer Auth (HTTP Authorization header with 'bearer' prefix)
+	pp.AddAuthProvider(interfaces.AuthTypeBearer, interfaces.AuthProvider{
+		Handler: pp.doBearerFlowRequest,
+		UserInfo: func(cnsiGUID string, cfTokenRecord *interfaces.TokenRecord) (*interfaces.ConnectedUser, bool) {
+			// don't fetch user info for the generic token auth
+			return &interfaces.ConnectedUser{
+				Name: cfTokenRecord.RefreshToken,
+				GUID: cfTokenRecord.RefreshToken,
+			}, true
+		},
+	})
+
+	// Generic Token Auth (HTTP Authorization header with 'token' prefix)
+	pp.AddAuthProvider(interfaces.AuthTypeToken, interfaces.AuthProvider{
+		Handler: pp.doTokenFlowRequest,
+		UserInfo: func(cnsiGUID string, cfTokenRecord *interfaces.TokenRecord) (*interfaces.ConnectedUser, bool) {
+			// don't fetch user info for the generic token auth
+			return &interfaces.ConnectedUser{
+				Name: cfTokenRecord.RefreshToken,
+				GUID: cfTokenRecord.RefreshToken,
+			}, true
+		},
 	})
 
 	// OIDC
@@ -748,6 +812,8 @@ func start(config interfaces.PortalConfig, p *portalProxy, needSetupMiddleware b
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
+
+	e.Binder = new(custombinder.CustomBinder)
 
 	// Root level middleware
 	if !isUpgrade {
@@ -874,8 +940,53 @@ func (p *portalProxy) getHttpClient(skipSSLValidation bool, mutating bool) http.
 	return client
 }
 
+// routes endpoint registration requests to Register functions of respective plugins
+// based on endpoint_type parameter
+
+// pluginRegisterRouter godoc
+// @Summary Register endpoint
+// @Description
+// @Tags admin
+// @Accept	x-www-form-urlencoded
+// @Produce	json
+// @Param endpoint_type formData string true "Endpoint type"
+// @Param cnsi_name formData string true "Endpoint name"
+// @Param api_endpoint formData string true "Endpoint URL"
+// @Param skip_ssl_validation formData string false "Skip SSL validation" Enums(true, false)
+// @Param sso_allowed formData string false "SSO allowed" Enums(true, false)
+// @Param cnsi_client_id formData string false "Client ID"
+// @Param cnsi_client_secret formData string false "Client secret"
+// @Param sub_type formData string false "Endpoint subtype"
+// @Success 200 {object} interfaces.CNSIRecord "Endpoint object"
+// @Failure 400 {object} interfaces.ErrorResponseBody "Error response"
+// @Failure 401 {object} interfaces.ErrorResponseBody "Error response"
+// @Security ApiKeyAuth
+// @Router /endpoints [post]
+func (p *portalProxy) pluginRegisterRouter(c echo.Context) error {
+	log.Debug("pluginRegisterRouter")
+
+	params := new(interfaces.RegisterEndpointParams)
+	err := interfaces.BindOnce(params, c)
+	if err != nil {
+		return err
+	}
+
+	if params.EndpointType == "" {
+		return errors.New("endpoint_type parameter is missing")
+	}
+
+	if val, ok := p.PluginRegisterRoutes[params.EndpointType]; ok {
+		log.Debugf("Routing to plugin: %s.Register", params.EndpointType)
+		return val(c)
+	}
+
+	return fmt.Errorf("Unknown endpoint_type %s", params.EndpointType)
+}
+
 func (p *portalProxy) registerRoutes(e *echo.Echo, needSetupMiddleware bool) {
 	log.Debug("registerRoutes")
+
+	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
 	for _, plugin := range p.Plugins {
 		middlewarePlugin, err := plugin.GetMiddlewarePlugin()
@@ -887,6 +998,12 @@ func (p *portalProxy) registerRoutes(e *echo.Echo, needSetupMiddleware bool) {
 	}
 
 	staticDir, staticDirErr := getStaticFiles(p.Env().String("UI_PATH", "./ui"))
+
+	api := e.Group("/api")
+	api.Use(p.setSecureCacheContentMiddleware)
+
+	// Verify Session
+	api.GET("/v1/auth/verify", p.verifySession)
 
 	// Always serve the backend API from /pp
 	pp := e.Group("/pp")
@@ -926,13 +1043,6 @@ func (p *portalProxy) registerRoutes(e *echo.Echo, needSetupMiddleware bool) {
 	sessionGroup.GET("/api_keys", p.listAPIKeys)
 	sessionGroup.DELETE("/api_keys", p.deleteAPIKey)
 
-	apiKeyGroupConfig := MiddlewareConfig{Skipper: p.apiKeySkipper}
-
-	apiKeyGroup := pp.Group("/v1")
-	apiKeyGroup.Use(p.apiKeyMiddleware)
-	apiKeyGroup.Use(p.sessionMiddlewareWithConfig(apiKeyGroupConfig))
-	apiKeyGroup.Use(p.xsrfMiddlewareWithConfig(apiKeyGroupConfig))
-
 	for _, plugin := range p.Plugins {
 		middlewarePlugin, err := plugin.GetMiddlewarePlugin()
 		if err != nil {
@@ -942,23 +1052,33 @@ func (p *portalProxy) registerRoutes(e *echo.Echo, needSetupMiddleware bool) {
 		e.Use(middlewarePlugin.SessionEchoMiddleware)
 	}
 
-	sessionAuthGroup := sessionGroup.Group("/auth")
+	apiKeyGroupConfig := MiddlewareConfig{Skipper: p.apiKeySkipper}
+
+	// API endpoints with Swagger documentation and accessible with an API key
+	stableAPIGroup := api.Group("/v1")
+	stableAPIGroup.Use(p.apiKeyMiddleware)
+	stableAPIGroup.Use(p.sessionMiddlewareWithConfig(apiKeyGroupConfig))
+	stableAPIGroup.Use(p.xsrfMiddlewareWithConfig(apiKeyGroupConfig))
 
 	// Connect to endpoint
-	sessionAuthGroup.POST("/login/cnsi", p.loginToCNSI)
-
-	// Connect to Enpoint (SSO)
-	sessionAuthGroup.GET("/login/cnsi", p.ssoLoginToCNSI)
+	stableAPIGroup.POST("/tokens", p.loginToCNSI)
 
 	// Disconnect endpoint
-	sessionAuthGroup.POST("/logout/cnsi", p.logoutOfCNSI)
+	stableAPIGroup.DELETE("/tokens/:cnsi_guid", p.logoutOfCNSI)
 
-	// Verify Session
-	sessionAuthGroup.GET("/session/verify", p.verifySession)
+	// Connect to Endpoint (SSO)
+	stableAPIGroup.GET("/tokens", p.ssoLoginToCNSI)
 
 	// CNSI operations
-	apiKeyGroup.GET("/cnsis", p.listCNSIs)
-	apiKeyGroup.GET("/cnsis/registered", p.listRegisteredCNSIs)
+	stableAPIGroup.GET("/endpoints", p.listCNSIs)
+
+	// Proxy single request
+	stableAPIGroup.GET("/proxy/:uuid/*", p.ProxySingleRequest)
+
+	sessionAuthGroup := sessionGroup.Group("/auth")
+
+	// Connect to Endpoint (SSO)
+	sessionAuthGroup.GET("/tokens", p.ssoLoginToCNSI)
 
 	// Info
 	sessionGroup.GET("/info", p.info)
@@ -981,12 +1101,13 @@ func (p *portalProxy) registerRoutes(e *echo.Echo, needSetupMiddleware bool) {
 	adminGroup := sessionGroup
 	adminGroup.Use(p.adminMiddleware)
 
+	p.PluginRegisterRoutes = make(map[string]func(echo.Context) error)
+
 	for _, plugin := range p.Plugins {
 		endpointPlugin, err := plugin.GetEndpointPlugin()
 		if err == nil {
 			// Plugin supports endpoint plugin
-			endpointType := endpointPlugin.GetType()
-			adminGroup.POST("/register/"+endpointType, endpointPlugin.Register)
+			p.PluginRegisterRoutes[endpointPlugin.GetType()] = endpointPlugin.Register
 		}
 
 		routePlugin, err := plugin.GetRoutePlugin()
@@ -995,10 +1116,28 @@ func (p *portalProxy) registerRoutes(e *echo.Echo, needSetupMiddleware bool) {
 		}
 	}
 
-	// Apply edits for the given endpoint
-	adminGroup.POST("/endpoint/:id", p.updateEndpoint)
+	// API endpoints with Swagger documentation and accessible with an API key that require admin permissions
+	stableAdminAPIGroup := stableAPIGroup
 
-	adminGroup.POST("/unregister", p.unregisterCluster)
+	// If path "/endpoints" is used, then stableAPIGroup.GET("/endpoints", p.listCNSIs) won't be executed anymore
+	// static html will be returned instead. That's why we use the path ""
+	stableEndpointAdminAPIGroup := stableAdminAPIGroup.Group("")
+
+	if p.GetConfig().UserEndpointsEnabled == config.UserEndpointsConfigEnum.Enabled {
+		stableEndpointAdminAPIGroup.Use(p.endpointAdminMiddleware)
+		stableEndpointAdminAPIGroup.POST("/endpoints", p.pluginRegisterRouter)
+		// Use middleware in route directly, because documentation is faulty
+		// Apply middleware to group with .Use() when this issue is resolved:
+		// https://github.com/labstack/echo/issues/1519
+		stableEndpointAdminAPIGroup.POST("/endpoints/:id", p.updateEndpoint, p.endpointUpdateDeleteMiddleware)
+		stableEndpointAdminAPIGroup.DELETE("/endpoints/:id", p.unregisterCluster, p.endpointUpdateDeleteMiddleware)
+	} else {
+		stableEndpointAdminAPIGroup.Use(p.adminMiddleware)
+		stableEndpointAdminAPIGroup.POST("/endpoints", p.pluginRegisterRouter)
+		stableEndpointAdminAPIGroup.POST("/endpoints/:id", p.updateEndpoint)
+		stableEndpointAdminAPIGroup.DELETE("/endpoints/:id", p.unregisterCluster)
+	}
+
 	// sessionGroup.DELETE("/cnsis", p.removeCluster)
 
 	// Serve up static resources
@@ -1136,4 +1275,16 @@ func stopEchoWhenUpgraded(e *echo.Echo, env *env.VarSet) {
 	}
 	log.Info("Upgrade has completed! Shutting down Upgrade web server instance")
 	e.Close()
+}
+
+// GetStoreFactory gets the store factory
+func (portalProxy *portalProxy) GetStoreFactory() interfaces.StoreFactory {
+	return portalProxy.StoreFactory
+}
+
+// SetStoreFactory sets the store factory
+func (portalProxy *portalProxy) SetStoreFactory(f interfaces.StoreFactory) interfaces.StoreFactory {
+	old := portalProxy.StoreFactory
+	portalProxy.StoreFactory = f
+	return old
 }

@@ -29,12 +29,28 @@
       justify-content: flex-end;
     }
   }
+
+  &__anchor {
+    display: flex;
+    justify-content: center;
+  }
+
   &__staging-error {
     align-items: center;
     display: flex;
 
     mat-icon {
       margin-right: 8px;
+    }
+  }
+
+  &__gitscm {
+    display: flex;
+    div {
+      flex: 1;
+      app-metadata-item:first-of-type {
+        margin-top: 0;
+      }
     }
   }
 }

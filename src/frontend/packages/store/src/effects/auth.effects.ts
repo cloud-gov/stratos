@@ -23,13 +23,12 @@ import {
   VERIFY_SESSION,
   VerifySession,
 } from '../actions/auth.actions';
-import { HydrateDashboardStateAction } from '../actions/dashboard-actions';
 import { GET_ENDPOINTS_SUCCESS, GetAllEndpointsSuccess } from '../actions/endpoint.actions';
 import { DispatchOnlyAppState } from '../app-state';
 import { BrowserStandardEncoder } from '../browser-encoder';
-import { getDashboardStateSessionId } from '../helpers/store-helpers';
+import { LocalStorageService } from '../helpers/local-storage-service';
 import { stratosEntityCatalog } from '../stratos-entity-catalog';
-import { SessionData } from '../types/auth.types';
+import { SessionDataEnvelope } from '../types/auth.types';
 
 const SETUP_HEADER = 'stratos-setup-required';
 const UPGRADE_HEADER = 'retry-after';
@@ -73,19 +72,27 @@ export class AuthEffect {
         'x-cap-request-date': (Math.floor(Date.now() / 1000)).toString()
       };
 
-      return this.http.get<SessionData>('/pp/v1/auth/session/verify', {
+      return this.http.get<SessionDataEnvelope>('/api/v1/auth/verify', {
         headers,
         observe: 'response',
         withCredentials: true,
       }).pipe(
         mergeMap(response => {
-          const sessionData = response.body;
-          sessionData.sessionExpiresOn = parseInt(response.headers.get('x-cap-session-expires-on'), 10) * 1000;
-          this.rehydrateDashboardState(this.store, sessionData);
-          return [
-            stratosEntityCatalog.systemInfo.actions.getSystemInfo(true),
-            new VerifiedSession(sessionData, action.updateEndpoints)
-          ];
+          const envelope = response.body;
+          if (envelope.status === 'error') {
+            const ssoOptions = response.headers.get(SSO_HEADER) as string;
+            // Check for cookie domain mismatch with the requesting URL
+            const isDomainMismatch = this.isDomainMismatch(response.headers);
+            return action.login ? [new InvalidSession(false, false, isDomainMismatch, ssoOptions)] : [new ResetAuth()];
+          } else {
+            const sessionData = envelope.data;
+            sessionData.sessionExpiresOn = parseInt(response.headers.get('x-cap-session-expires-on'), 10) * 1000;
+            LocalStorageService.localStorageToStore(this.store, sessionData);
+            return [
+              stratosEntityCatalog.systemInfo.actions.getSystemInfo(true),
+              new VerifiedSession(sessionData, action.updateEndpoints)
+            ];
+          }
         }),
         catchError((err, caught) => {
           let setupMode = false;
@@ -155,19 +162,5 @@ export class AuthEffect {
     return false;
   }
 
-  private rehydrateDashboardState(store: Store<DispatchOnlyAppState>, sessionData: SessionData) {
-    const storage = localStorage || window.localStorage;
-    // We use the username to key the session storage. We could replace this with the users id?
-    if (storage && sessionData.user) {
-      const sessionId = getDashboardStateSessionId(sessionData.user.name);
-      if (sessionId) {
-        try {
-          const dashboardData = JSON.parse(storage.getItem(sessionId));
-          store.dispatch(new HydrateDashboardStateAction(dashboardData));
-        } catch (e) {
-          console.warn('Failed to parse user settings from session storage, consider clearing them manually', e);
-        }
-      }
-    }
-  }
+
 }

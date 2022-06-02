@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Store } from '@ngrx/store';
+import { GitCommit, gitEntityCatalog, GitRepo, GitSCMService, GitSCMType, SCMIcon } from '@stratosui/git';
 import { combineLatest as observableCombineLatest, Observable, of as observableOf, of } from 'rxjs';
 import { combineLatest, delay, distinct, filter, first, map, mergeMap, startWith, switchMap, tap } from 'rxjs/operators';
 
@@ -18,11 +19,11 @@ import { ActionState } from '../../../../../../../../store/src/reducers/api-requ
 import { EntityInfo } from '../../../../../../../../store/src/types/api.types';
 import { IAppSummary } from '../../../../../../cf-api.types';
 import { cfEntityCatalog } from '../../../../../../cf-entity-catalog';
-import { GitSCMService, GitSCMType } from '../../../../../../shared/data-services/scm/scm.service';
 import { CfCurrentUserPermissions } from '../../../../../../user-permissions/cf-user-permissions-checkers';
 import { ApplicationMonitorService } from '../../../../application-monitor.service';
 import { ApplicationData, ApplicationService } from '../../../../application.service';
 import { DEPLOY_TYPES_IDS } from '../../../../deploy-application/deploy-application-steps.types';
+import { EnvVarStratosProjectSource } from './application-env-vars.service';
 
 const isDockerHubRegEx = /^([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+):([a-zA-Z0-9_.-]+)/g;
 
@@ -48,6 +49,12 @@ const appRestageConfirmation = new ConfirmationDialogConfig(
   'Restage'
 );
 
+interface CustomEnvVarStratosProjectSource extends EnvVarStratosProjectSource {
+  label?: string;
+  icon?: SCMIcon;
+  commitURL?: string;
+}
+
 @Component({
   selector: 'app-build-tab',
   templateUrl: './build-tab.component.html',
@@ -57,7 +64,7 @@ const appRestageConfirmation = new ConfirmationDialogConfig(
   ]
 })
 export class BuildTabComponent implements OnInit {
-  public isBusyUpdating$: Observable<{ updating: boolean }>;
+  public isBusyUpdating$: Observable<{ updating: boolean, }>;
   public manageAppPermission = CfCurrentUserPermissions.APPLICATION_MANAGE;
 
   constructor(
@@ -78,7 +85,9 @@ export class BuildTabComponent implements OnInit {
 
   sshStatus$: Observable<string>;
 
-  deploySource$: Observable<{ type: string, [name: string]: any }>;
+  deploySource$: Observable<CustomEnvVarStratosProjectSource>;
+
+  public gitRepo$: Observable<GitRepo>;
 
   ngOnInit() {
     this.cardTwoFetching$ = this.applicationService.application$.pipe(
@@ -115,7 +124,17 @@ export class BuildTabComponent implements OnInit {
         this.applicationService.cfGuid,
         space.metadata.guid)
       )
-    )
+    );
+
+    this.gitRepo$ = this.applicationService.applicationStratProject$.pipe(
+      map(project => {
+        const scmType = project.deploySource.scm || project.deploySource.type;
+        const scm = this.scmService.getSCM(scmType as GitSCMType, project.deploySource.endpointGuid);
+        return gitEntityCatalog.repo.store.getRepoInfo.getEntityService({ projectName: project.deploySource.project, scm });
+      }),
+      switchMap(repoService => repoService.waitForEntity$),
+      map(p => p.entity)
+    );
 
     const deploySource$ = observableCombineLatest(
       this.applicationService.applicationStratProject$,
@@ -123,20 +142,12 @@ export class BuildTabComponent implements OnInit {
     ).pipe(
       map(([project, app]) => {
         if (!!project) {
-          const deploySource = { ...project.deploySource } as any;
+          const deploySource: CustomEnvVarStratosProjectSource = { ...project.deploySource };
 
           // Legacy
           if (deploySource.type === 'github') {
             deploySource.type = 'gitscm';
             deploySource.scm = 'github';
-          }
-
-          if (deploySource.type === 'gitscm') {
-            const scmType = deploySource.scm as GitSCMType;
-            const scm = this.scmService.getSCM(scmType);
-            deploySource.label = scm.getLabel();
-            deploySource.commitURL = scm.getCommitURL(deploySource.project, deploySource.commit);
-            deploySource.icon = scm.getIcon();
           }
 
           if (deploySource.type === DEPLOY_TYPES_IDS.DOCKER_IMG) {
@@ -158,8 +169,34 @@ export class BuildTabComponent implements OnInit {
           return null;
         }
       }),
+      switchMap((deploySource: CustomEnvVarStratosProjectSource) => {
+        const res: Observable<any>[] = [
+          of(deploySource),
+        ];
+        if (deploySource && deploySource.type === 'gitscm') {
+          // Add gitscm info... add async info in next section
+          const scmType = deploySource.scm as GitSCMType;
+          const scm = this.scmService.getSCM(scmType, deploySource.endpointGuid);
+          deploySource.label = scm.getLabel();
+          deploySource.icon = scm.getIcon();
+          res.push(gitEntityCatalog.commit.store.getEntityService(null, scm.endpointGuid, {
+            projectName: deploySource.project,
+            scm,
+            commitSha: deploySource.commit
+          }).entityObs$);
+        } else {
+          res.push(of(null));
+        }
+        return observableCombineLatest(res);
+      }),
+      map(([deploySource, commit]: [CustomEnvVarStratosProjectSource, EntityInfo<GitCommit>]) => {
+        if (deploySource) {
+          deploySource.commitURL = commit?.entity?.html_url;
+        }
+        return deploySource;
+      }),
       startWith({ type: 'loading' })
-    )
+    );
 
     this.deploySource$ = canSeeEnvVars$.pipe(
       switchMap(canSeeEnvVars => canSeeEnvVars ? deploySource$ : of(null)),
@@ -187,7 +224,7 @@ export class BuildTabComponent implements OnInit {
   private dispatchAppStats = () => {
     const { cfGuid, appGuid } = this.applicationService;
     cfEntityCatalog.appStats.api.getMultiple(appGuid, cfGuid);
-  }
+  };
 
   restartApplication() {
     this.confirmDialog.open(appRestartConfirmation, () => {

@@ -11,9 +11,14 @@ import (
 	"errors"
 
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )
+
+// Module init will register plugin
+func init() {
+	interfaces.AddPlugin("cloudfoundry", nil, Init)
+}
 
 // CloudFoundrySpecification - Plugin to support Cloud Foundry endpoint type
 type CloudFoundrySpecification struct {
@@ -62,7 +67,13 @@ func (c *CloudFoundrySpecification) Validate(userGUID string, cnsiRecord interfa
 func (c *CloudFoundrySpecification) Connect(ec echo.Context, cnsiRecord interfaces.CNSIRecord, userId string) (*interfaces.TokenRecord, bool, error) {
 	log.Info("CloudFoundry Connect...")
 
-	connectType := ec.FormValue("connect_type")
+	params := new(interfaces.LoginToCNSIParams)
+	err := interfaces.BindOnce(params, ec)
+	if err != nil {
+		return nil, false, err
+	}
+
+	connectType := params.ConnectType
 	if len(connectType) == 0 {
 		connectType = interfaces.AuthConnectTypeCreds
 	}
@@ -98,6 +109,11 @@ func (c *CloudFoundrySpecification) cfLoginHook(context echo.Context) error {
 		return nil
 	}
 
+	userGUID, err := c.portalProxy.GetSessionStringValue(context, "user_id")
+	if err != nil {
+		return fmt.Errorf("Could not determine user_id from session: %s", err)
+	}
+
 	// CF auto reg cnsi entry missing, attempt to register
 	if cfCnsi.CNSIType == "" {
 		cfEndpointSpec, _ := c.portalProxy.GetEndpointTypeSpec("cf")
@@ -111,7 +127,7 @@ func (c *CloudFoundrySpecification) cfLoginHook(context echo.Context) error {
 		log.Infof("Auto-registering cloud foundry endpoint %s as \"%s\"", cfAPI, autoRegName)
 
 		// Auto-register the Cloud Foundry
-		cfCnsi, err = c.portalProxy.DoRegisterEndpoint(autoRegName, cfAPI, true, c.portalProxy.GetConfig().CFClient, c.portalProxy.GetConfig().CFClientSecret, false, "", cfEndpointSpec.Info)
+		cfCnsi, err = c.portalProxy.DoRegisterEndpoint(autoRegName, cfAPI, true, c.portalProxy.GetConfig().CFClient, c.portalProxy.GetConfig().CFClientSecret, "", false, "", false, cfEndpointSpec.Info)
 		if err != nil {
 			log.Errorf("Could not auto-register Cloud Foundry endpoint: %v", err)
 			return nil
@@ -126,11 +142,6 @@ func (c *CloudFoundrySpecification) cfLoginHook(context echo.Context) error {
 	c.portalProxy.GetConfig().CloudFoundryInfo.EndpointGUID = cfCnsi.GUID
 
 	log.Infof("Determining if user should auto-connect to %s.", cfAPI)
-
-	userGUID, err := c.portalProxy.GetSessionStringValue(context, "user_id")
-	if err != nil {
-		return fmt.Errorf("Could not determine user_id from session: %s", err)
-	}
 
 	cfTokenRecord, ok := c.portalProxy.GetCNSITokenRecordWithDisconnected(cfCnsi.GUID, userGUID)
 	if ok && cfTokenRecord.Disconnected {
@@ -167,7 +178,7 @@ func (c *CloudFoundrySpecification) fetchAutoRegisterEndpoint() (string, interfa
 		return "", interfaces.CNSIRecord{}, nil
 	}
 	// Error is populated if there was an error OR there was no record
-	cfCnsi, err := c.portalProxy.GetCNSIRecordByEndpoint(cfAPI)
+	cfCnsi, err := c.portalProxy.GetAdminCNSIRecordByEndpoint(cfAPI)
 	return cfAPI, cfCnsi, err
 }
 

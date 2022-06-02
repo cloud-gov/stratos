@@ -8,11 +8,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/cnsis"
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces/config"
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/tokens"
 )
 
@@ -57,7 +57,7 @@ func (p *portalProxy) ssoLoginToCNSI(c echo.Context) error {
 
 	if len(code) == 0 {
 		// First time around
-		// Use the standard SSO Login Callback endpoint, so this can be whitelisted for Stratos and Endpoint login
+		// Use the standard SSO Login Callback endpoint, so this can be allow-listed for Stratos and Endpoint login
 		returnURL := getSSORedirectURI(state, state, endpointGUID)
 		redirectURL := fmt.Sprintf("%s/oauth/authorize?response_type=code&client_id=%s&redirect_uri=%s",
 			cnsiRecord.AuthorizationEndpoint, cnsiRecord.ClientId, url.QueryEscape(returnURL))
@@ -80,24 +80,46 @@ func (p *portalProxy) ssoLoginToCNSI(c echo.Context) error {
 
 // Connect to the given Endpoint
 // Note, an admin user can connect an endpoint as a system endpoint to share it with others
+
+// loginToCNSI godoc
+// @Summary Connect to the given endpoint
+// @Description An admin user can connect an endpoint as a system endpoint to share it with others.
+// @Accept	x-www-form-urlencoded
+// @Produce	json
+// @Param cnsi_guid formData string true "Endpoint GUID"
+// @Param system_shared formData string false "Register as a system endpoint" Enums(true, false)
+// @Param connect_type formData string false "Connection type" Enums(creds, none)
+// @Param username formData string false "Username"
+// @Param password formData string false "Password"
+// @Success 201 {object} interfaces.LoginRes "Connected endpoint object"
+// @Failure 400 {object} interfaces.ErrorResponseBody "Error response"
+// @Failure 401 {object} interfaces.ErrorResponseBody "Error response"
+// @Security ApiKeyAuth
+// @Router /tokens [post]
 func (p *portalProxy) loginToCNSI(c echo.Context) error {
 	log.Debug("loginToCNSI")
-	cnsiGUID := c.FormValue("cnsi_guid")
+
 	var systemSharedToken = false
 
-	if len(cnsiGUID) == 0 {
+	params := new(interfaces.LoginToCNSIParams)
+	err := interfaces.BindOnce(params, c)
+	if err != nil {
+		return err
+	}
+
+	if len(params.CNSIGUID) == 0 {
 		return interfaces.NewHTTPShadowError(
 			http.StatusBadRequest,
 			"Missing target endpoint",
 			"Need Endpoint GUID passed as form param")
 	}
 
-	systemSharedValue := c.FormValue("system_shared")
+	systemSharedValue := params.SystemShared
 	if len(systemSharedValue) > 0 {
 		systemSharedToken = systemSharedValue == "true"
 	}
 
-	resp, err := p.DoLoginToCNSI(c, cnsiGUID, systemSharedToken)
+	resp, err := p.DoLoginToCNSI(c, params.CNSIGUID, systemSharedToken)
 	if err != nil {
 		return err
 	}
@@ -128,14 +150,42 @@ func (p *portalProxy) DoLoginToCNSI(c echo.Context, cnsiGUID string, systemShare
 		return nil, echo.NewHTTPError(http.StatusUnauthorized, "Could not find correct session value")
 	}
 
+	// admins are note allowed to connect to user created endpoints
+	if p.GetConfig().UserEndpointsEnabled != config.UserEndpointsConfigEnum.Disabled {
+
+		if len(cnsiRecord.Creator) != 0 && cnsiRecord.Creator != userID {
+			return nil, echo.NewHTTPError(http.StatusUnauthorized, "Can not connect - users are not allowed to connect to personal endpoints created by other users")
+		}
+
+		// search for system or personal endpoints and check if they are connected
+		// automatically disconnect other endpoint if already connected to same url
+		cnsiList, err := p.listCNSIByAPIEndpoint(cnsiRecord.APIEndpoint.String())
+		if err != nil {
+			return nil, echo.NewHTTPError(
+				http.StatusBadRequest,
+				"Failed to retrieve list of CNSIs",
+				"Failed to retrieve list of CNSIs: %v", err,
+			)
+		}
+
+		for _, cnsi := range cnsiList {
+			if (cnsi.Creator == userID || len(cnsi.Creator) == 0) && cnsi.GUID != cnsiGUID {
+				_, ok := p.GetCNSITokenRecord(cnsi.GUID, userID)
+				if ok {
+					p.ClearCNSIToken(*cnsi, userID)
+				}
+			}
+		}
+	}
+
 	// Register as a system endpoint?
 	if systemSharedToken {
-		// User needs to be an admin
 		user, err := p.StratosAuthService.GetUser(userID)
 		if err != nil {
 			return nil, echo.NewHTTPError(http.StatusUnauthorized, "Can not connect System Shared endpoint - could not check user")
 		}
 
+		// User needs to be an admin
 		if !user.Admin {
 			return nil, echo.NewHTTPError(http.StatusUnauthorized, "Can not connect System Shared endpoint - user is not an administrator")
 		}
@@ -245,7 +295,7 @@ func (p *portalProxy) DoLoginToCNSIwithConsoleUAAtoken(c echo.Context, theCNSIre
 			err = p.setCNSITokenRecord(theCNSIrecord.GUID, u.UserGUID, uaaToken)
 
 			// Update the endpoint to indicate that SSO Login is okay
-			repo, dbErr := cnsis.NewPostgresCNSIRepository(p.DatabaseConnectionPool)
+			repo, dbErr := p.GetStoreFactory().EndpointStore()
 			if dbErr == nil {
 				theCNSIrecord.SSOAllowed = true
 				repo.Update(theCNSIrecord, p.Config.EncryptionKeyInBytes)
@@ -305,10 +355,21 @@ func (p *portalProxy) FetchOAuth2Token(cnsiRecord interfaces.CNSIRecord, c echo.
 	return uaaRes, u, &cnsiRecord, nil
 }
 
+// logoutOfCNSI godoc
+// @Summary Disconnect from endpoint
+// @Description
+// @Accept	x-www-form-urlencoded
+// @Produce	json
+// @Param cnsi_guid path string true "Endpoint GUID"
+// @Success 200
+// @Failure 400 {object} interfaces.ErrorResponseBody "Error response"
+// @Failure 401 {object} interfaces.ErrorResponseBody "Error response"
+// @Security ApiKeyAuth
+// @Router /tokens/{cnsi_guid} [delete]
 func (p *portalProxy) logoutOfCNSI(c echo.Context) error {
 	log.Debug("logoutOfCNSI")
 
-	cnsiGUID := c.FormValue("cnsi_guid")
+	cnsiGUID := c.Param("cnsi_guid")
 
 	if len(cnsiGUID) == 0 {
 		return interfaces.NewHTTPShadowError(

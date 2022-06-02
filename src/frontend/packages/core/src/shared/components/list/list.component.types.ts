@@ -1,7 +1,7 @@
-import { Injectable, Type } from '@angular/core';
+import { Type } from '@angular/core';
 import moment from 'moment';
 import { BehaviorSubject, combineLatest, Observable, of as observableOf } from 'rxjs';
-import { first, map, startWith } from 'rxjs/operators';
+import { filter, first, map, startWith, switchMap } from 'rxjs/operators';
 
 import { ListView } from '../../../../../store/src/actions/list.actions';
 import { ActionState } from '../../../../../store/src/reducers/api-request-reducer/types';
@@ -97,7 +97,7 @@ export interface IListConfig<T> {
    */
   expandComponent?: ListExpandedComponentType<T>;
   /**
-   * Hide the fresh button
+   * Set to true to hide the list refresh button
    */
   hideRefresh?: boolean;
   /**
@@ -126,6 +126,9 @@ export interface IListConfig<T> {
   customTimeInitialValue?: string;
 }
 
+// Simple list config does not need getDataSource
+export type ISimpleListConfig<T> = Omit<IListConfig<T>, 'getDataSource'>;
+
 export interface IListMultiFilterConfig {
   key: string;
   label: string;
@@ -153,8 +156,7 @@ export interface IListMultiFilterConfigItem {
 export const defaultPaginationPageSizeOptionsCards = [defaultClientPaginationPageSize, 30, 80];
 export const defaultPaginationPageSizeOptionsTable = [defaultClientPaginationPageSize, 20, 80];
 
-@Injectable()
-export class ListConfig<T> implements IListConfig<T> {
+export class ListConfig<T, A = T> implements IListConfig<T> {
   isLocal = false;
   pageSizeOptions = defaultPaginationPageSizeOptionsCards;
   viewType = ListViewTypes.BOTH;
@@ -167,7 +169,7 @@ export class ListConfig<T> implements IListConfig<T> {
   getMultiActions = (): IMultiListAction<T>[] => null;
   getSingleActions = (): IListAction<T>[] => null;
   getColumns = (): ITableColumn<T>[] => null;
-  getDataSource = (): ListDataSource<T> => null;
+  getDataSource = (): ListDataSource<T, A> => null;
   getMultiFiltersConfigs = (): IListMultiFilterConfig[] => [];
   getFilters = (): IListFilter[] => [];
   getInitialised = () => observableOf(true);
@@ -256,16 +258,26 @@ export class MultiFilterManager<T> {
   }
 
   public applyValue(multiFilters: {}) {
-    const value = multiFilters[this.multiFilterConfig.key];
-    if (value) {
-      this.value = value;
-      this.selectItem(value);
-    }
+    this.selectItem(multiFilters[this.multiFilterConfig.key]);
+
+  }
+
+  public hasValue(multiFilters: {}): boolean {
+    return !!multiFilters[this.multiFilterConfig.key];
   }
 
   public selectItem(itemValue: string) {
-    this.multiFilterConfig.select.next(itemValue);
-    this.value = itemValue;
+    this.multiFilterConfig.loading$.pipe(
+      filter(ready => !ready),
+      switchMap(() => this.filterItems$),
+      first(),
+    ).subscribe(items => {
+      // Ensure we actually have the item. Could be from storage and invalid
+      if (itemValue === undefined || items.find(i => i.value === itemValue)) {
+        this.value = itemValue;
+        this.multiFilterConfig.select.next(itemValue);
+      }
+    });
   }
 }
 

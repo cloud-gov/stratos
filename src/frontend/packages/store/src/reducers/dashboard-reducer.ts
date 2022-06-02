@@ -1,4 +1,3 @@
-import { GRAVATAR_ENABLED, SetGravatarEnabledAction } from './../actions/dashboard-actions';
 import {
   CLOSE_SIDE_NAV,
   DISABLE_SIDE_NAV_MOBILE_MODE,
@@ -7,37 +6,23 @@ import {
   HYDRATE_DASHBOARD_STATE,
   HydrateDashboardStateAction,
   OPEN_SIDE_NAV,
+  SET_DASHBOARD_STATE_VALUE,
   SET_STRATOS_THEME,
+  SetDashboardStateValueAction,
   SetPollingEnabledAction,
   SetSessionTimeoutAction,
   SetThemeAction,
   TIMEOUT_SESSION,
   TOGGLE_SIDE_NAV,
 } from '../actions/dashboard-actions';
+import { DashboardState, defaultDashboardState } from '../types/dashboard.types';
+import {
+  GRAVATAR_ENABLED,
+  HOME_CARD_LAYOUT,
+  SetGravatarEnabledAction,
+  SetHomeCardLayoutAction,
+} from './../actions/dashboard-actions';
 
-export interface DashboardState {
-  timeoutSession: boolean;
-  pollingEnabled: boolean;
-  sidenavOpen: boolean;
-  isMobile: boolean;
-  isMobileNavOpen: boolean;
-  sideNavPinned: boolean;
-  themeKey: string;
-  headerEventMinimized: boolean;
-  gravatarEnabled: boolean;
-}
-
-export const defaultDashboardState: DashboardState = {
-  timeoutSession: true,
-  pollingEnabled: true,
-  sidenavOpen: true,
-  isMobile: false,
-  isMobileNavOpen: false,
-  sideNavPinned: true,
-  themeKey: null,
-  headerEventMinimized: false,
-  gravatarEnabled: false,
-};
 
 export function dashboardReducer(state: DashboardState = defaultDashboardState, action): DashboardState {
   switch (action.type) {
@@ -77,6 +62,21 @@ export function dashboardReducer(state: DashboardState = defaultDashboardState, 
       return {
         ...state,
         gravatarEnabled: gravatarAction.enableGravatar
+      };
+    case HOME_CARD_LAYOUT:
+      const layoutAction = action as SetHomeCardLayoutAction;
+      return {
+        ...state,
+        homeLayout: layoutAction.id
+      };
+    case SET_DASHBOARD_STATE_VALUE:
+      const setValueAction = action as SetDashboardStateValueAction;
+      if (state[setValueAction.prop] === setValueAction.value) {
+        return state;
+      }
+      return {
+        ...state,
+        [setValueAction.prop]: setValueAction.value
       };
     case HYDRATE_DASHBOARD_STATE:
       const hydrateDashboardStateAction = action as HydrateDashboardStateAction;

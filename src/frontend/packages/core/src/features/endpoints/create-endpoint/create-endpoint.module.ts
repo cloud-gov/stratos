@@ -20,11 +20,13 @@ import { CreateEndpointComponent } from './create-endpoint.component';
     CreateEndpointCfStep1Component,
     CreateEndpointBaseStepComponent,
     CreateEndpointConnectComponent,
-    ConnectEndpointComponent
+    ConnectEndpointComponent,
   ],
   exports: [
     CreateEndpointComponent,
-    ConnectEndpointComponent
+    CreateEndpointCfStep1Component,
+    CreateEndpointConnectComponent,
+    ConnectEndpointComponent,
   ]
 })
 export class CreateEndpointModule { }

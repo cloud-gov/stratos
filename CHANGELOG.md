@@ -1,5 +1,105 @@
 # Change Log
 
+## 4.4.0
+
+[Full Changelog](https://github.com/cloudfoundry/stratos/compare/4.3.0...4.4.0)
+
+This release includes a number of improvements and fixes, including updates to visible Kubernetes resource types, deploying applications from private Github/Gitlab repositories and a greatly improved home page.
+
+**Improvements:**
+
+- Show more kube resource types for a cluster [\#4823](https://github.com/cloudfoundry/stratos/issues/4823)
+- Add additional kube resources to Workload page [\#4831](https://github.com/cloudfoundry/stratos/issues/4831)
+- Deploy Applications from Enterprise GitHub and GitLab [\#4828](https://github.com/cloudfoundry/stratos/issues/4828)
+- Improve initial home page to show more meaningful data [\#4774](https://github.com/cloudfoundry/stratos/issues/4774)
+- Persist list settings over browser refresh & add reset button [\#4814](https://github.com/cloudfoundry/stratos/issues/4814)
+- Application logstreams incorrectly render unicode characters in the log. [\#4807](https://github.com/cloudfoundry/stratos/issues/4807)
+- No option to set an SSOWhitelist with helm deployments [\#4785](https://github.com/cloudfoundry/stratos/issues/4785)
+- Endpoint Registration: Advanced Client ID and Secret fields can be confusing [\#4767](https://github.com/cloudfoundry/stratos/issues/4767)
+- Clicking on a helm repo endpoint should automatically set it as a filter in chart list [\#4760](https://github.com/cloudfoundry/stratos/issues/4760)
+- Upgrade to Angular 10 [\#4725](https://github.com/cloudfoundry/stratos/issues/4725)
+- Add ability to favourite Kubernetes Namespaces [\#4651](https://github.com/cloudfoundry/stratos/issues/4651)
+
+**Fixes:**
+
+- Helm chart: Cannot provide custom mariadb.port [\#4843](https://github.com/cloudfoundry/stratos/issues/4843)
+- Can't connect Stratos to a non-Stratos-Metrics Prometheus [\#4804](https://github.com/cloudfoundry/stratos/issues/4804)
+- UAA Setup UI does not accept client secret with # char [\#4789](https://github.com/cloudfoundry/stratos/issues/4789)
+- Password show/hide icon takes tab focus [\#4768](https://github.com/cloudfoundry/stratos/issues/4768)
+
+
+## 4.3.0
+
+[Full Changelog](https://github.com/cloudfoundry/stratos/compare/4.2.1...4.3.0)
+
+This release contains a number of fixes and improvements:
+
+**Improvements:**
+
+- Lists: Highlight filters that are set in the list header [\#4748](https://github.com/cloudfoundry/stratos/issues/4748)
+- Helm Chart List: Show which endpoint a chart comes from  [\#4717](https://github.com/cloudfoundry/stratos/issues/4717)
+- Add new darker/lighter background colour to all textareas [\#4689](https://github.com/cloudfoundry/stratos/issues/4689)
+- Improve Helm Chart List Repo Filter   [\#4655](https://github.com/cloudfoundry/stratos/issues/4655)
+- Improve password input fields to include a reveal button to view password [\#4219](https://github.com/cloudfoundry/stratos/issues/4219)
+
+**Fixes:**
+
+- CF events list actee filter fails to show clear button [\#4747](https://github.com/cloudfoundry/stratos/issues/4747)
+- Stratos DB Migration fails on Postgres [\#4736](https://github.com/cloudfoundry/stratos/issues/4736)
+- Workload Summary: Shrinking the windows hides header content [\#4707](https://github.com/cloudfoundry/stratos/issues/4707)
+- Dyanmic sizing of endpoint cards in register endpoint stepper sometimes fails [\#4706](https://github.com/cloudfoundry/stratos/issues/4706)
+- Helm: Can't use a custom TLS secret when deploying Stratos [\#4704](https://github.com/cloudfoundry/stratos/issues/4704)
+- Helm Install: Errors can incorrectly show up as endpoint errors [\#4673](https://github.com/cloudfoundry/stratos/issues/4673)
+- Helm Install: Trim error message in snackbar [\#4672](https://github.com/cloudfoundry/stratos/issues/4672)
+- Icon font's show text before icon on slow loading instances [\#4668](https://github.com/cloudfoundry/stratos/issues/4668)
+- 'Are you logged in' dialog seen on logging out page [\#4468](https://github.com/cloudfoundry/stratos/issues/4468)
+
+
+
+## 4.2.1
+
+[Full Changelog](https://github.com/cloudfoundry/stratos/compare/4.2.0...4.2.1)
+
+This release contains a single fix relating to Single Sign On:
+
+**Fixes:**
+- SSO Auth Doesn't Work for Endpoints [\#4716](https://github.com/cloudfoundry/stratos/issues/4716)
+
+
+
+## 4.2.0
+
+[Full Changelog](https://github.com/cloudfoundry/stratos/compare/4.1.0...4.2.0)
+
+This release includes the new Kubernetes and Helm extensions. These have been donated to the Cloud Foundry Foundation by SUSE and with this release are now part of upstream Stratos.
+
+Find out more about them on the Stratos web site: https://stratos.app.
+
+Improvements and fixes in this release:
+
+**Improvements:**
+
+- Add Stratos Helm Repo to Artifact Hub [\#4645](https://github.com/cloudfoundry/stratos/issues/4645)
+- Kubernetes and Helm extensions added from downstream SUSE version [\#4619](https://github.com/cloudfoundry/stratos/issues/4619)
+- "Manage Roles By Username" icon isn't obviously the right place to add users to a space [\#4590](https://github.com/cloudfoundry/stratos/issues/4590)
+
+**Fixes:**
+
+- Error filtering applications by org [\#4658](https://github.com/cloudfoundry/stratos/issues/4658)
+- API Keys should not be shown when persistence is disabled [\#4615](https://github.com/cloudfoundry/stratos/issues/4615)
+- Home Page CF App Favouriete card clips text [\#4613](https://github.com/cloudfoundry/stratos/issues/4613)
+- Can not push All-in-one docker image to Eirini [\#4612](https://github.com/cloudfoundry/stratos/issues/4612)
+- CF Service Instances Last Operation is bunched up [\#4605](https://github.com/cloudfoundry/stratos/issues/4605)
+- Cf Events List: Details Column Bugs [\#4600](https://github.com/cloudfoundry/stratos/issues/4600)
+- Service names aren't showing in an app's service screen [\#4577](https://github.com/cloudfoundry/stratos/issues/4577)
+
+**Breaking Changes:**
+
+- **All-in-one Docker image no longer runs as the root user**
+
+  The port used in the Docker All-in-one container image has been changed from 443 to 5443. If you run the container in Docker, you will need to change the port-forwarding option to forward port 5443 and not 443. The documentation has been updated to reflect this. If you push the image to Cloud Foundry, no change is required.
+
+
 ## 4.1.0
 
 [Full Changelog](https://github.com/cloudfoundry/stratos/compare/4.0.1...4.1.0)
@@ -116,7 +216,7 @@ This release contains a number of fixes and improvements:
 
 **Improvements:**
 
-- Apply SSO whitelist to additional places [\#4318](https://github.com/cloudfoundry/stratos/issues/4318)
+- Apply SSO allow-list to additional places [\#4318](https://github.com/cloudfoundry/stratos/issues/4318)
 
 **Fixes:**
 

@@ -1,19 +1,22 @@
 import { Injectable } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { BehaviorSubject, combineLatest, of } from 'rxjs';
-import { debounceTime, filter, map } from 'rxjs/operators';
+import { debounceTime, filter, first, map } from 'rxjs/operators';
 
 import { ListView } from '../../../../../../../store/src/actions/list.actions';
 import { SetClientFilter } from '../../../../../../../store/src/actions/pagination.actions';
 import { AppState } from '../../../../../../../store/src/app-state';
 import { entityCatalog } from '../../../../../../../store/src/entity-catalog/entity-catalog';
-import { FavoritesConfigMapper } from '../../../../../../../store/src/favorite-config-mapper';
 import { EntityMonitorFactory } from '../../../../../../../store/src/monitors/entity-monitor.factory.service';
 import { InternalEventMonitorFactory } from '../../../../../../../store/src/monitors/internal-event-monitor.factory';
 import { PaginationMonitorFactory } from '../../../../../../../store/src/monitors/pagination-monitor.factory';
 import { stratosEntityCatalog } from '../../../../../../../store/src/stratos-entity-catalog';
 import { EndpointModel } from '../../../../../../../store/src/types/endpoint.types';
 import { PaginationEntityState } from '../../../../../../../store/src/types/pagination.types';
+import { UserFavoriteManager } from '../../../../../../../store/src/user-favorite-manager';
+import { SessionService } from '../../../../services/session.service';
+import { CurrentUserPermissionsService } from '../../../../../core/permissions/current-user-permissions.service';
+import { StratosCurrentUserPermissions } from '../../../../../core/permissions/stratos-user-permissions.checker';
 import { createTableColumnFavorite } from '../../list-table/table-cell-favorite/table-cell-favorite.component';
 import { ITableColumn } from '../../list-table/table.types';
 import {
@@ -114,13 +117,42 @@ export class EndpointsListConfigService implements IListConfig<EndpointModel> {
     entityMonitorFactory: EntityMonitorFactory,
     internalEventMonitorFactory: InternalEventMonitorFactory,
     endpointListHelper: EndpointListHelper,
-    favoritesConfigMapper: FavoritesConfigMapper,
+    userFavoriteManager: UserFavoriteManager,
+    currentUserPermissionsService: CurrentUserPermissionsService,
+    sessionService: SessionService
   ) {
     this.singleActions = endpointListHelper.endpointActions();
     const favoriteCell = createTableColumnFavorite(
-      (row: EndpointModel) => favoritesConfigMapper.getFavoriteEndpointFromEntity(row)
+      (row: EndpointModel) => userFavoriteManager.getFavoriteEndpointFromEntity(row)
     );
     this.columns.push(favoriteCell);
+    combineLatest([
+      sessionService.userEndpointsEnabled(),
+      sessionService.userEndpointsNotDisabled(),
+      currentUserPermissionsService.can(StratosCurrentUserPermissions.EDIT_ADMIN_ENDPOINT),
+      currentUserPermissionsService.can(StratosCurrentUserPermissions.EDIT_ENDPOINT)
+    ]).pipe(
+      first(),
+      map(([userEndpointsEnabled, userEndpointsNotDisabled, isAdmin, isEndpointAdmin]) => {
+        return (userEndpointsEnabled && (isAdmin || isEndpointAdmin)) || (userEndpointsNotDisabled && isAdmin);
+      })
+    ).subscribe(enabled => {
+      if (enabled) {
+        this.columns.splice(4, 0, {
+          columnId: 'creator',
+          headerCell: () => 'Creator',
+          cellDefinition: {
+            valuePath: 'creator.name'
+          },
+          sort: {
+            type: 'sort',
+            orderKey: 'creator',
+            field: 'creator.name'
+          },
+          cellFlex: '2'
+        });
+      }
+    });
 
     this.dataSource = new EndpointsDataSource(
       this.store,
@@ -152,8 +184,8 @@ export class EndpointsListConfigService implements IListConfig<EndpointModel> {
         stratosEntityCatalog.endpoint.store.getPaginationMonitor().currentPage$,
         stratosEntityCatalog.endpoint.store.getPaginationMonitor().pagination$
       ]).pipe(
-        debounceTime(100),// This can get pretty spammy, to help protect resetEndpointTypeFilter allow a pause
-        filter(([endpoints, pagination]) => !!endpoints),
+        debounceTime(100), // This can get pretty spammy, to help protect resetEndpointTypeFilter allow a pause
+        filter(([endpoints]) => !!endpoints),
         map(([endpoints, pagination]) => {
           // Provide a list of endpoint types only if there are more than two registered endpoint types
           const types: { [type: string]: boolean; } = {};
@@ -201,4 +233,5 @@ export class EndpointsListConfigService implements IListConfig<EndpointModel> {
       );
     }
   }
+
 }

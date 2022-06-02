@@ -7,14 +7,14 @@ import (
 
 	"github.com/gorilla/sessions"
 	"github.com/govau/cf-common/env"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 )
 
 type PortalProxy interface {
 	GetHttpClient(skipSSLValidation bool) http.Client
 	GetHttpClientForRequest(req *http.Request, skipSSLValidation bool) http.Client
 	RegisterEndpoint(c echo.Context, fetchInfo InfoFunc) error
-	DoRegisterEndpoint(cnsiName string, apiEndpoint string, skipSSLValidation bool, clientId string, clientSecret string, ssoAllowed bool, subType string, fetchInfo InfoFunc) (CNSIRecord, error)
+	DoRegisterEndpoint(cnsiName string, apiEndpoint string, skipSSLValidation bool, clientId string, clientSecret string, userId string, ssoAllowed bool, subType string, createSystemEndpoint bool, fetchInfo InfoFunc) (CNSIRecord, error)
 	GetEndpointTypeSpec(typeName string) (EndpointPlugin, error)
 
 	// Auth
@@ -36,7 +36,7 @@ type PortalProxy interface {
 
 	// Expose internal portal proxy records to extensions
 	GetCNSIRecord(guid string) (CNSIRecord, error)
-	GetCNSIRecordByEndpoint(endpoint string) (CNSIRecord, error)
+	GetAdminCNSIRecordByEndpoint(endpoint string) (CNSIRecord, error)
 	GetCNSITokenRecord(cnsiGUID string, userGUID string) (TokenRecord, bool)
 	GetCNSITokenRecordWithDisconnected(cnsiGUID string, userGUID string) (TokenRecord, bool)
 	GetCNSIUser(cnsiGUID string, userGUID string) (*ConnectedUser, bool)
@@ -56,6 +56,7 @@ type PortalProxy interface {
 	ProxyRequest(c echo.Context, uri *url.URL) (map[string]*CNSIRequest, error)
 	DoProxyRequest(requests []ProxyRequestInfo) (map[string]*CNSIRequest, error)
 	DoProxySingleRequest(cnsiGUID, userGUID, method, requestUrl string, headers http.Header, body []byte) (*CNSIRequest, error)
+	DoProxySingleRequestWithToken(cnsiGUID string, token *TokenRecord, method, requestURL string, headers http.Header, body []byte) (*CNSIRequest, error)
 	SendProxiedResponse(c echo.Context, responses map[string]*CNSIRequest) error
 
 	// Database Connection
@@ -78,4 +79,8 @@ type PortalProxy interface {
 
 	// Plugins
 	GetPlugin(name string) interface{}
+
+	// Store
+	GetStoreFactory() StoreFactory
+	SetStoreFactory(factory StoreFactory) StoreFactory
 }

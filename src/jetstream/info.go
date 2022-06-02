@@ -7,7 +7,8 @@ import (
 	"strings"
 
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
+	log "github.com/sirupsen/logrus"
 )
 
 // Endpoint - This represents the CNSI endpoint
@@ -60,6 +61,8 @@ func (p *portalProxy) getInfo(c echo.Context) (*interfaces.Info, error) {
 	s.Configuration.ListMaxSize = p.Config.UIListMaxSize
 	s.Configuration.ListAllowLoadMaxed = p.Config.UIListAllowLoadMaxed
 	s.Configuration.APIKeysEnabled = string(p.Config.APIKeysEnabled)
+	s.Configuration.HomeViewShowFavoritesOnly = p.Config.HomeViewShowFavoritesOnly
+	s.Configuration.UserEndpointsEnabled = string(p.Config.UserEndpointsEnabled)
 
 	// Only add diagnostics information if the user is an admin
 	if uaaUser.Admin {
@@ -96,8 +99,37 @@ func (p *portalProxy) getInfo(c echo.Context) (*interfaces.Info, error) {
 			endpoint.TokenMetadata = token.Metadata
 			endpoint.SystemSharedToken = token.SystemShared
 		}
+
+		// set the creator preemptively as admin, if no id is found
+		endpoint.Creator = &interfaces.CreatorInfo{
+			Name:   "System Endpoint",
+			Admin:  false,
+			System: true,
+		}
+
+		// assume it's a user when len != 0
+		if len(cnsi.Creator) != 0 {
+			endpoint.Creator.System = false
+			u, err := p.StratosAuthService.GetUser(cnsi.Creator)
+			// add an anonymous user if no user is found
+			if err != nil {
+				endpoint.Creator.Name = "user"
+				endpoint.Creator.Admin = false
+			} else {
+				endpoint.Creator.Name = u.Name
+				endpoint.Creator.Admin = u.Admin
+			}
+		}
+
 		cnsiType := cnsi.CNSIType
-		s.Endpoints[cnsiType][cnsi.GUID] = endpoint
+
+		_, ok = s.Endpoints[cnsiType]
+		if ok {
+			s.Endpoints[cnsiType][cnsi.GUID] = endpoint
+		} else {
+			// definitions of YAML-defined plugins may be removed
+			log.Warnf("Unknown endpoint type %q encountered in the DB", cnsiType)
+		}
 	}
 
 	// Allow plugin to modify the info data
