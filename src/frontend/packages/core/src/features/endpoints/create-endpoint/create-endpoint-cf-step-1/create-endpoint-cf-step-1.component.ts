@@ -1,10 +1,9 @@
-import { AfterContentInit, Component, Input, ViewChild } from '@angular/core';
-import { NgForm, NgModel } from '@angular/forms';
+import { AfterContentInit, Component, Input } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Observable } from 'rxjs';
-import { filter, map, pairwise } from 'rxjs/operators';
+import { distinctUntilChanged, filter, map, pairwise } from 'rxjs/operators';
 
-import { getFullEndpointApiUrl } from '../../../../../../store/src/endpoint-utils';
 import { entityCatalog } from '../../../../../../store/src/entity-catalog/entity-catalog';
 import {
   StratosCatalogEndpointEntity,
@@ -13,36 +12,40 @@ import { ActionState } from '../../../../../../store/src/reducers/api-request-re
 import { stratosEntityCatalog } from '../../../../../../store/src/stratos-entity-catalog';
 import { getIdFromRoute } from '../../../../core/utils.service';
 import { IStepperStep, StepOnNextFunction } from '../../../../shared/components/stepper/step/step.component';
+import { SessionService } from '../../../../shared/services/session.service';
+import { CurrentUserPermissionsService } from '../../../../core/permissions/current-user-permissions.service';
+import { UserProfileService } from '../../../../core/user-profile.service';
 import { SnackBarService } from '../../../../shared/services/snackbar.service';
 import { ConnectEndpointConfig } from '../../connect.service';
 import { getSSOClientRedirectURI } from '../../endpoint-helpers';
+import { CreateEndpointHelperComponent } from '../create-endpoint-helper';
 
-/* tslint:disable:no-access-missing-member https://github.com/mgechev/codelyzer/issues/191*/
 @Component({
   selector: 'app-create-endpoint-cf-step-1',
   templateUrl: './create-endpoint-cf-step-1.component.html',
   styleUrls: ['./create-endpoint-cf-step-1.component.scss']
 })
-export class CreateEndpointCfStep1Component implements IStepperStep, AfterContentInit {
+export class CreateEndpointCfStep1Component extends CreateEndpointHelperComponent implements IStepperStep, AfterContentInit {
+
+  registerForm: FormGroup;
 
   @Input() finalStep: boolean;
-
-  existingEndpoints: Observable<{
-    names: string[],
-    urls: string[],
-  }>;
+  private pFixedUrl: string;
+  @Input()
+  get fixedUrl(): string {
+    return this.pFixedUrl;
+  }
+  set fixedUrl(url: string) {
+    this.pFixedUrl = url;
+    this.registerForm.controls.urlField.setValue(this.pFixedUrl);
+    if (this.pFixedUrl) {
+      this.registerForm.controls.urlField.disable();
+    } else {
+      this.registerForm.controls.urlField.enable();
+    }
+  }
 
   validate: Observable<boolean>;
-
-  @ViewChild('form', { static: true }) form: NgForm;
-  @ViewChild('nameField', { static: true }) nameField: NgModel;
-  @ViewChild('urlField', { static: true }) urlField: NgModel;
-  @ViewChild('skipSllField', { static: true }) skipSllField: NgModel;
-  @ViewChild('ssoAllowedField') ssoAllowedField: NgModel;
-
-  // Optional Client ID and Client Secret
-  @ViewChild('clientIDField') clientIDField: NgModel;
-  @ViewChild('clientSecretField') clientSecretField: NgModel;
 
   urlValidation: string;
 
@@ -53,16 +56,28 @@ export class CreateEndpointCfStep1Component implements IStepperStep, AfterConten
   endpoint: StratosCatalogEndpointEntity;
   show = false;
 
+  showAdvancedOptions = false;
+
   constructor(
+    private fb: FormBuilder,
     activatedRoute: ActivatedRoute,
-    private snackBarService: SnackBarService
+    private snackBarService: SnackBarService,
+    sessionService: SessionService,
+    currentUserPermissionsService: CurrentUserPermissionsService,
+    userProfileService: UserProfileService
   ) {
-    this.existingEndpoints = stratosEntityCatalog.endpoint.store.getAll.getPaginationMonitor().currentPage$.pipe(
-      map(endpoints => ({
-        names: endpoints.map(ep => ep.name),
-        urls: endpoints.map(ep => getFullEndpointApiUrl(ep)),
-      }))
-    );
+    super(sessionService, currentUserPermissionsService, userProfileService);
+
+    this.registerForm = this.fb.group({
+      nameField: ['', [Validators.required]],
+      urlField: ['', [Validators.required]],
+      skipSllField: [false, []],
+      ssoAllowedField: [false, []],
+      // Optional Client ID and Client Secret
+      clientIDField: ['', []],
+      clientSecretField: ['', []],
+      createSystemEndpointField: [true, []],
+    });
 
     const epType = getIdFromRoute(activatedRoute, 'type');
     const epSubType = getIdFromRoute(activatedRoute, 'subtype');
@@ -78,26 +93,27 @@ export class CreateEndpointCfStep1Component implements IStepperStep, AfterConten
     return stratosEntityCatalog.endpoint.api.register<ActionState>(
       type,
       subType,
-      this.nameField.value,
-      this.urlField.value,
-      !!this.skipSllField.value,
-      this.clientIDField ? this.clientIDField.value : '',
-      this.clientSecretField ? this.clientSecretField.value : '',
-      this.ssoAllowedField ? !!this.ssoAllowedField.value : false,
+      this.registerForm.value.nameField,
+      this.registerForm.value.urlField,
+      this.registerForm.value.skipSllField,
+      this.registerForm.value.clientIDField,
+      this.registerForm.value.clientSecretField,
+      this.registerForm.value.ssoAllowedField,
+      this.registerForm.value.createSystemEndpointField,
     ).pipe(
       pairwise(),
       filter(([oldVal, newVal]) => (oldVal.busy && !newVal.busy)),
-      map(([oldVal, newVal]) => newVal),
+      map(([, newVal]) => newVal),
       map(result => {
         const data: ConnectEndpointConfig = {
           guid: result.message,
-          name: this.nameField.value,
+          name: this.registerForm.value.nameField,
           type,
           subType,
-          ssoAllowed: this.ssoAllowedField ? !!this.ssoAllowedField.value : false
+          ssoAllowed: this.registerForm.value.ssoAllowedField ? !!this.registerForm.value.ssoAllowedField : false
         };
         if (!result.error) {
-          this.snackBarService.show(`Successfully registered '${this.nameField.value}'`);
+          this.snackBarService.show(`Successfully registered '${this.registerForm.value.nameField}'`);
         }
         const success = !result.error;
         return {
@@ -108,13 +124,12 @@ export class CreateEndpointCfStep1Component implements IStepperStep, AfterConten
         };
       })
     );
-  }
-
+  };
 
   ngAfterContentInit() {
-    this.validate = this.form.statusChanges.pipe(
+    this.validate = this.registerForm.statusChanges.pipe(
       map(() => {
-        return this.form.valid;
+        return this.registerForm.valid;
       }));
   }
 
@@ -129,5 +144,17 @@ export class CreateEndpointCfStep1Component implements IStepperStep, AfterConten
 
     // Only allow SSL if the endpoint type is Cloud Foundry
     this.endpointTypeSupportsSSO = endpoint.definition.type === 'cf';
+  }
+
+  toggleAdvancedOptions() {
+    this.showAdvancedOptions = !this.showAdvancedOptions;
+  }
+
+  toggleCreateSystemEndpoint() {
+    // wait a tick for validators to adjust to new data in the directive
+    setTimeout(() => {
+      this.registerForm.controls.nameField.updateValueAndValidity();
+      this.registerForm.controls.urlField.updateValueAndValidity();
+    });
   }
 }

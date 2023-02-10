@@ -7,7 +7,7 @@ package mock_interfaces
 import (
 	interfaces "github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 	gomock "github.com/golang/mock/gomock"
-	echo "github.com/labstack/echo"
+	echo "github.com/labstack/echo/v4"
 	reflect "reflect"
 )
 
@@ -104,4 +104,28 @@ func (m *MockStratosAuth) VerifySession(c echo.Context, sessionUser string, sess
 func (mr *MockStratosAuthMockRecorder) VerifySession(c, sessionUser, sessionExpireTime interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VerifySession", reflect.TypeOf((*MockStratosAuth)(nil).VerifySession), c, sessionUser, sessionExpireTime)
+}
+
+// BeforeVerifySession mocks base method
+func (m *MockStratosAuth) BeforeVerifySession(c echo.Context) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "BeforeVerifySession", c)
+}
+
+// BeforeVerifySession indicates an expected call of BeforeVerifySession
+func (mr *MockStratosAuthMockRecorder) BeforeVerifySession(c interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeforeVerifySession", reflect.TypeOf((*MockStratosAuth)(nil).BeforeVerifySession), c)
+}
+
+// ShowConfig mocks base method
+func (m *MockStratosAuth) ShowConfig(config *interfaces.ConsoleConfig) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ShowConfig", config)
+}
+
+// ShowConfig indicates an expected call of ShowConfig
+func (mr *MockStratosAuthMockRecorder) ShowConfig(c interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShowConfig", reflect.TypeOf((*MockStratosAuth)(nil).ShowConfig), c)
 }

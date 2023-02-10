@@ -26,15 +26,15 @@ import { UserProfileInfo, UserProfilePasswordUpdate } from './types/user-profile
 export interface EndpointActionBuilder extends OrchestratedActionBuilders {
   get: (
     guid: string,
-  ) => GetEndpoint,
+  ) => GetEndpoint;
   getAll: (
     login?: boolean,
-  ) => GetAllEndpoints,
+  ) => GetAllEndpoints;
   getMultiple: (
     endpointGuid?: string,
     paginationKey?: string,
     args?: { login: boolean, }
-  ) => GetAllEndpoints,
+  ) => GetAllEndpoints;
   connect: (
     guid: string,
     endpointType: EndpointType,
@@ -42,15 +42,15 @@ export interface EndpointActionBuilder extends OrchestratedActionBuilders {
     authValues: AuthParams,
     systemShared: boolean,
     body: string,
-  ) => ConnectEndpoint,
+  ) => ConnectEndpoint;
   disconnect: (
     guid: string,
     endpointType: EndpointType,
-  ) => DisconnectEndpoint,
+  ) => DisconnectEndpoint;
   unregister: (
     guid: string,
     endpointType: EndpointType,
-  ) => UnregisterEndpoint,
+  ) => UnregisterEndpoint;
   register: (
     endpointType: EndpointType,
     endpointSubType: string,
@@ -60,7 +60,8 @@ export interface EndpointActionBuilder extends OrchestratedActionBuilders {
     clientID?: string,
     clientSecret?: string,
     ssoAllowed?: boolean,
-  ) => RegisterEndpoint,
+    createSystemEndpointField?: boolean,
+  ) => RegisterEndpoint;
   update: (
     guid: string,
     endpointGuid: string,
@@ -74,7 +75,7 @@ export interface EndpointActionBuilder extends OrchestratedActionBuilders {
       clientSecret: string,
       allowSSO: boolean,
     }
-  ) => UpdateEndpoint,
+  ) => UpdateEndpoint;
 }
 
 export const endpointActionBuilder: EndpointActionBuilder = {
@@ -104,6 +105,7 @@ export const endpointActionBuilder: EndpointActionBuilder = {
     clientID?: string,
     clientSecret?: string,
     ssoAllowed?: boolean,
+    createSystemEndpoint?: boolean,
   ) => new RegisterEndpoint(
     endpointType,
     endpointSubType,
@@ -113,6 +115,7 @@ export const endpointActionBuilder: EndpointActionBuilder = {
     clientID,
     clientSecret,
     ssoAllowed,
+    createSystemEndpoint,
   ),
   update: (
     guid: string,
@@ -153,14 +156,14 @@ export const systemInfoActionBuilder: SystemInfoActionBuilder = {
 };
 
 export interface UserFavoriteActionBuilder extends OrchestratedActionBuilders {
-  getMultiple: () => GetUserFavoritesAction,
-  getAll: () => GetUserFavoritesAction,
+  getMultiple: () => GetUserFavoritesAction;
+  getAll: () => GetUserFavoritesAction;
   delete: (
     favorite: UserFavorite<IFavoriteMetadata>
-  ) => RemoveUserFavoriteAction,
+  ) => RemoveUserFavoriteAction;
   save: (
     favorite: UserFavorite<IFavoriteMetadata>
-  ) => SaveUserFavoriteAction,
+  ) => SaveUserFavoriteAction;
   toggle: (
     favorite: UserFavorite<IFavoriteMetadata>
   ) => ToggleUserFavoriteAction;

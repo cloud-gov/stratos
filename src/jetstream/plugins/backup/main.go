@@ -4,19 +4,25 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strconv"
 
 	goosedbversion "github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/goose-db-version"
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )
+
+// Module init will register plugin
+func init() {
+	interfaces.AddPlugin("backup", nil, Init)
+}
 
 // BackupRestore - Backup or restore endpoints and tokens
 type BackupRestore struct {
 	portalProxy interfaces.PortalProxy
 }
 
-// Init creates a new Autoscaler
+// Init creates a new backup/restore plugin
 func Init(portalProxy interfaces.PortalProxy) (interfaces.StratosPlugin, error) {
 	return &BackupRestore{portalProxy: portalProxy}, nil
 }
@@ -49,6 +55,11 @@ func (br *BackupRestore) AddSessionGroupRoutes(echoGroup *echo.Group) {
 
 // Init performs plugin initialization
 func (br *BackupRestore) Init() error {
+	enabledStr := br.portalProxy.Env().String("FEATURE_ALLOW_BACKUP", "true")
+	if enabled, err := strconv.ParseBool(enabledStr); err == nil && !enabled {
+		return errors.New("Backup/restore feature disabled via configuration")
+	}
+
 	return nil
 }
 

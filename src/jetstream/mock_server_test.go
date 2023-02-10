@@ -1,11 +1,15 @@
 package main
 
 import (
+	"crypto/sha1"
 	"database/sql"
+	"database/sql/driver"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,10 +17,11 @@ import (
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 	"github.com/govau/cf-common/env"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	sqlmock "gopkg.in/DATA-DOG/go-sqlmock.v1"
 
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/crypto"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/factory"
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/tokens"
 
@@ -36,6 +41,27 @@ type mockPGStore struct {
 	Path          string
 	DbPool        *sql.DB
 	StoredSession *sessions.Session
+}
+
+type MockEndpointRequest struct {
+	HTTPTestServer *httptest.Server
+	EchoContext    echo.Context
+	EndpointName   string
+	InsertArgs     []driver.Value
+	QueryArgs      []driver.Value
+}
+
+type MockUser struct {
+	ConnectedUser *interfaces.ConnectedUser
+	SessionValues map[string]interface{}
+}
+
+func (m *mockPGStore) New(r *http.Request, name string) (*sessions.Session, error) {
+	session := &sessions.Session{
+		Values:  make(map[interface{}]interface{}),
+		Options: &sessions.Options{},
+	}
+	return session, nil
 }
 
 func (m *mockPGStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
@@ -139,12 +165,21 @@ func setupPortalProxy(db *sql.DB) *portalProxy {
 		AuthEndpointType:     "remote",
 	}
 
-
 	pp := newPortalProxy(pc, db, nil, nil, env.NewVarSet())
 	pp.SessionStore = setupMockPGStore(db)
 	initialisedEndpoint := initCFPlugin(pp)
 	pp.Plugins = make(map[string]interfaces.StratosPlugin)
 	pp.Plugins["cf"] = initialisedEndpoint
+
+	pp.SessionStoreOptions = new(sessions.Options)
+	pp.SessionStoreOptions.Domain = "example.org"
+	pp.SessionStoreOptions.HttpOnly = false
+	pp.SessionStoreOptions.Secure = false
+	pp.SessionStoreOptions.Path = "/"
+
+	store := factory.NewDefaultStoreFactory(db)
+	pp.SetStoreFactory(store)
+
 	return pp
 }
 
@@ -158,18 +193,18 @@ func expectOneRow() sqlmock.Rows {
 
 func expectCFRow() sqlmock.Rows {
 	return sqlmock.NewRows(rowFieldsForCNSI).
-		AddRow(mockCFGUID, "Some fancy CF Cluster", "cf", mockAPIEndpoint, mockAuthEndpoint, mockAuthEndpoint, mockDopplerEndpoint, true, mockClientId, cipherClientSecret, true, "", "")
+		AddRow(mockCFGUID, "Some fancy CF Cluster", "cf", mockAPIEndpoint, mockAuthEndpoint, mockAuthEndpoint, mockDopplerEndpoint, true, mockClientId, cipherClientSecret, true, "", "", "")
 }
 
 func expectCERow() sqlmock.Rows {
 	return sqlmock.NewRows(rowFieldsForCNSI).
-		AddRow(mockCEGUID, "Some fancy HCE Cluster", "hce", mockAPIEndpoint, mockAuthEndpoint, mockAuthEndpoint, "", true, mockClientId, cipherClientSecret, true, "", "")
+		AddRow(mockCEGUID, "Some fancy HCE Cluster", "hce", mockAPIEndpoint, mockAuthEndpoint, mockAuthEndpoint, "", true, mockClientId, cipherClientSecret, true, "", "", "")
 }
 
 func expectCFAndCERows() sqlmock.Rows {
 	return sqlmock.NewRows(rowFieldsForCNSI).
-		AddRow(mockCFGUID, "Some fancy CF Cluster", "cf", mockAPIEndpoint, mockAuthEndpoint, mockAuthEndpoint, mockDopplerEndpoint, true, mockClientId, cipherClientSecret, false, "", "").
-		AddRow(mockCEGUID, "Some fancy HCE Cluster", "hce", mockAPIEndpoint, mockAuthEndpoint, mockAuthEndpoint, "", true, mockClientId, cipherClientSecret, false, "", "")
+		AddRow(mockCFGUID, "Some fancy CF Cluster", "cf", mockAPIEndpoint, mockAuthEndpoint, mockAuthEndpoint, mockDopplerEndpoint, true, mockClientId, cipherClientSecret, false, "", "", "").
+		AddRow(mockCEGUID, "Some fancy HCE Cluster", "hce", mockAPIEndpoint, mockAuthEndpoint, mockAuthEndpoint, "", true, mockClientId, cipherClientSecret, false, "", "", "")
 }
 
 func expectTokenRow() sqlmock.Rows {
@@ -184,6 +219,20 @@ func expectEncryptedTokenRow(mockEncryptionKey []byte) sqlmock.Rows {
 		AddRow(mockTokenGUID, encryptedUaaToken, encryptedUaaToken, mockTokenExpiry, false, "OAuth2", "", mockUserGUID, nil)
 }
 
+func createEndpointRowArgs(endpointName string, APIEndpoint string, authEndpoint string, tokenEndpoint string, uaaUserGUID string, userAdmin bool) []driver.Value {
+	creatorGUID := ""
+
+	h := sha1.New()
+	if userAdmin {
+		h.Write([]byte(APIEndpoint))
+	} else {
+		h.Write([]byte(APIEndpoint + uaaUserGUID))
+		creatorGUID = uaaUserGUID
+	}
+
+	return []driver.Value{base64.RawURLEncoding.EncodeToString(h.Sum(nil)), endpointName, "cf", APIEndpoint, authEndpoint, tokenEndpoint, mockDopplerEndpoint, true, mockClientId, cipherClientSecret, false, "", "", creatorGUID}
+}
+
 func setupHTTPTest(req *http.Request) (*httptest.ResponseRecorder, *echo.Echo, echo.Context, *portalProxy, *sql.DB, sqlmock.Sqlmock) {
 	res := httptest.NewRecorder()
 	e, ctx := setupEchoContext(res, req)
@@ -193,9 +242,64 @@ func setupHTTPTest(req *http.Request) (*httptest.ResponseRecorder, *echo.Echo, e
 	}
 	pp := setupPortalProxy(db)
 
-	pp.DatabaseConnectionPool = db
-
 	return res, e, ctx, pp, db, mock
+}
+
+func setupPortalProxyWithAuthService(mockStratosAuth interfaces.StratosAuth) (*portalProxy, *sql.DB, sqlmock.Sqlmock) {
+	db, mock, dberr := sqlmock.New()
+	if dberr != nil {
+		fmt.Printf("an error '%s' was not expected when opening a stub database connection", dberr)
+	}
+
+	pp := setupPortalProxy(db)
+	pp.StratosAuthService = mockStratosAuth
+
+	return pp, db, mock
+}
+
+func setupMockUser(guid string, admin bool, scopes []string) MockUser {
+	mockUser := MockUser{nil, nil}
+	mockUser.ConnectedUser = &interfaces.ConnectedUser{
+		GUID:   guid,
+		Admin:  admin,
+		Scopes: scopes,
+	}
+	mockUser.SessionValues = make(map[string]interface{})
+	mockUser.SessionValues["user_id"] = guid
+	mockUser.SessionValues["exp"] = time.Now().AddDate(0, 0, 1).Unix()
+
+	return mockUser
+}
+
+// mockV2Info needs to be closed
+func setupMockEndpointRegisterRequest(t *testing.T, user *interfaces.ConnectedUser, mockV2Info *httptest.Server, endpointName string, createSystemEndpoint bool, generateAdminGUID bool) MockEndpointRequest {
+
+	// create a request for each endpoint
+	req := setupMockReq("POST", "", map[string]string{
+		"cnsi_name":              endpointName,
+		"api_endpoint":           mockV2Info.URL,
+		"skip_ssl_validation":    "true",
+		"cnsi_client_id":         mockClientId,
+		"cnsi_client_secret":     mockClientSecret,
+		"create_system_endpoint": strconv.FormatBool(createSystemEndpoint),
+	})
+
+	res := httptest.NewRecorder()
+	_, ctx := setupEchoContext(res, req)
+
+	uaaUserGUID := ""
+
+	h := sha1.New()
+	if generateAdminGUID {
+		h.Write([]byte(mockV2Info.URL))
+	} else {
+		h.Write([]byte(mockV2Info.URL + user.GUID))
+		uaaUserGUID = user.GUID
+	}
+	insertArgs := []driver.Value{base64.RawURLEncoding.EncodeToString(h.Sum(nil)), endpointName, "cf", mockV2Info.URL, mockAuthEndpoint, mockTokenEndpoint, mockDopplerEndpoint, true, mockClientId, sqlmock.AnyArg(), false, "", "", uaaUserGUID}
+	queryArgs := []driver.Value{base64.RawURLEncoding.EncodeToString(h.Sum(nil)), endpointName, "cf", mockV2Info.URL, mockAuthEndpoint, mockTokenEndpoint, mockDopplerEndpoint, true, mockClientId, cipherClientSecret, false, "", "", uaaUserGUID}
+
+	return MockEndpointRequest{mockV2Info, ctx, endpointName, insertArgs, queryArgs}
 }
 
 func msRoute(route string) mockServerFunc {
@@ -270,21 +374,25 @@ const (
 
 	stringCFType = "cf"
 
-	selectAnyFromTokens = `SELECT (.+) FROM tokens WHERE (.+)`
-	insertIntoTokens    = `INSERT INTO tokens`
-	updateTokens        = `UPDATE tokens`
-	selectAnyFromCNSIs  = `SELECT (.+) FROM cnsis WHERE (.+)`
-	insertIntoCNSIs     = `INSERT INTO cnsis`
-	findUserGUID        = `SELECT user_guid FROM local_users WHERE (.+)`
-	addLocalUser        = `INSERT INTO local_users (.+)`
-	findPasswordHash    = `SELECT password_hash FROM local_users WHERE (.+)`
-	findUserScope       = `SELECT user_scope FROM local_users WHERE (.+)`
-	updateLastLoginTime = `UPDATE local_users (.+)`
-	findLastLoginTime   = `SELECT last_login FROM local_users WHERE (.+)`
-	getDbVersion        = `SELECT version_id FROM goose_db_version WHERE is_applied = '1' ORDER BY id DESC LIMIT 1`
+	selectAnyFromTokens    = `SELECT (.+) FROM tokens WHERE (.+)`
+	insertIntoTokens       = `INSERT INTO tokens`
+	updateTokens           = `UPDATE tokens`
+	deleteTokens           = `DELETE FROM tokens WHERE (.+)`
+	selectFromCNSIs        = `SELECT (.+) FROM cnsis`
+	selectAnyFromCNSIs     = `SELECT (.+) FROM cnsis WHERE (.+)`
+	selectCreatorFromCNSIs = `SELECT (.+) FROM cnsis WHERE creator=(.+)`
+	deleteFromCNSIs        = `DELETE FROM cnsis WHERE (.+)`
+	insertIntoCNSIs        = `INSERT INTO cnsis`
+	findUserGUID           = `SELECT user_guid FROM local_users WHERE (.+)`
+	addLocalUser           = `INSERT INTO local_users (.+)`
+	findPasswordHash       = `SELECT password_hash FROM local_users WHERE (.+)`
+	findUserScope          = `SELECT user_scope FROM local_users WHERE (.+)`
+	updateLastLoginTime    = `UPDATE local_users (.+)`
+	findLastLoginTime      = `SELECT last_login FROM local_users WHERE (.+)`
+	getDbVersion           = `SELECT version_id FROM goose_db_version WHERE is_applied = '1' ORDER BY id DESC LIMIT 1`
 )
 
-var rowFieldsForCNSI = []string{"guid", "name", "cnsi_type", "api_endpoint", "auth_endpoint", "token_endpoint", "doppler_logging_endpoint", "skip_ssl_validation", "client_id", "client_secret", "allow_sso", "sub_type", "meta_data"}
+var rowFieldsForCNSI = []string{"guid", "name", "cnsi_type", "api_endpoint", "auth_endpoint", "token_endpoint", "doppler_logging_endpoint", "skip_ssl_validation", "client_id", "client_secret", "allow_sso", "sub_type", "meta_data", "creator"}
 
 var mockEncryptionKey = make([]byte, 32)
 

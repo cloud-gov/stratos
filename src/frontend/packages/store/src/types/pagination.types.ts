@@ -55,7 +55,7 @@ export class PaginationEntityState {
   ids = {};
   params: PaginationParam;
   pageRequests: {
-    [pageNumber: string]: ListActionState
+    [pageNumber: string]: ListActionState,
   };
   clientPagination?: PaginationClientPagination;
   /**
@@ -63,10 +63,11 @@ export class PaginationEntityState {
    */
   seed?: string;
   maxedState: PaginationMaxedState;
+  isListPagination = false;
 }
 
 export function isPaginatedAction(obj: any): PaginatedAction {
-  return obj && Object.keys(obj).indexOf('paginationKey') >= 0 ? obj as PaginatedAction : null;
+  return obj && Object.keys(obj).indexOf('paginationKey') >= 0 && Object.keys(obj).indexOf('type') >= 0 ? obj as PaginatedAction : null;
 }
 
 export interface BasePaginatedAction extends BasePipelineRequestAction, Action {
@@ -90,6 +91,7 @@ export interface PaginatedAction extends BasePaginatedAction, EntityRequestActio
   // Internal, used for local multi action lists
   __forcedPageNumber__?: number;
   __forcedPageEntityConfig__?: EntityCatalogEntityConfig;
+  isList?: boolean;
 }
 
 export interface PaginationEntityTypeState {

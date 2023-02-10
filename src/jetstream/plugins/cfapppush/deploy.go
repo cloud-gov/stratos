@@ -1,10 +1,12 @@
 package cfapppush
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +14,7 @@ import (
 
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 	yaml "gopkg.in/yaml.v2"
 
@@ -69,6 +71,11 @@ const (
 )
 
 const (
+	SCM_TYPE_GITHUB = "github"
+	SCM_TYPE_GITLAB = "gitlab"
+)
+
+const (
 	stratosProjectKey = "STRATOS_PROJECT"
 )
 
@@ -82,6 +89,7 @@ func (cfAppPush *CFAppPush) deploy(echoContext echo.Context) error {
 
 	// App ID is this is a redeploy
 	appID := echoContext.QueryParam("app")
+	userGUID := echoContext.Get("user_id").(string)
 
 	log.Debug("UpgradeToWebSocket")
 	clientWebSocket, pingTicker, err := interfaces.UpgradeToWebSocket(echoContext)
@@ -121,7 +129,7 @@ func (cfAppPush *CFAppPush) deploy(echoContext echo.Context) error {
 	// Get the source, depending on the source type
 	switch msg.Type {
 	case SOURCE_GITSCM:
-		stratosProject, appDir, err = getGitSCMSource(clientWebSocket, tempDir, msg)
+		stratosProject, appDir, err = cfAppPush.getGitSCMSource(clientWebSocket, tempDir, msg, userGUID)
 	case SOURCE_FOLDER:
 		stratosProject, appDir, err = getFolderSource(clientWebSocket, tempDir, msg)
 	case SOURCE_GITURL:
@@ -223,7 +231,7 @@ func (cfAppPush *CFAppPush) deploy(echoContext echo.Context) error {
 
 	sendEvent(clientWebSocket, CLOSE_SUCCESS)
 
-	log.Debug("Waiting for close ackhowledgement from the client")
+	log.Debug("Waiting for close acknowledgement from the client")
 
 	wait := 30 * time.Second
 	clientWebSocket.SetReadDeadline(time.Now().Add(wait))
@@ -369,7 +377,7 @@ func getFolderSource(clientWebSocket *websocket.Conn, tempDir string, msg Socket
 	return stratosProject, tempDir, nil
 }
 
-func getGitSCMSource(clientWebSocket *websocket.Conn, tempDir string, msg SocketMessage) (StratosProject, string, error) {
+func (cfAppPush *CFAppPush) getGitSCMSource(clientWebSocket *websocket.Conn, tempDir string, msg SocketMessage, userGUID string) (StratosProject, string, error) {
 	var (
 		err error
 	)
@@ -380,11 +388,70 @@ func getGitSCMSource(clientWebSocket *websocket.Conn, tempDir string, msg Socket
 		return StratosProject{}, tempDir, err
 	}
 
-	log.Debugf("GitSCM SCM: %s, Source: %s, branch %s, url: %s", info.SCM, info.Project, info.Branch, info.URL)
+	loggerURL := info.URL
+	cloneURL := info.URL
+	skipSLL := false
+
+	// Apply credentials associated with the endpoint
+	if len(info.EndpointGUID) != 0 {
+		parsedURL, err := url.Parse(info.URL)
+		if err != nil {
+			return StratosProject{}, tempDir, errors.New("Failed to parse SCM URL")
+		}
+
+		cnsiRecord, err := cfAppPush.portalProxy.GetCNSIRecord(info.EndpointGUID)
+		if err != nil {
+			return StratosProject{}, tempDir, errors.New("Failed to find endpoint with guid " + info.EndpointGUID)
+		}
+
+		skipSLL = cnsiRecord.SkipSSLValidation
+
+		tokenRecord, isTokenFound := cfAppPush.portalProxy.GetCNSITokenRecord(info.EndpointGUID, userGUID)
+		if isTokenFound {
+			authTokenDecodedBytes, err := base64.StdEncoding.DecodeString(tokenRecord.AuthToken)
+			if err != nil {
+				return StratosProject{}, tempDir, errors.New("Failed to decode auth token")
+			}
+
+			var (
+				username string
+				password string
+			)
+
+			switch info.SCM {
+			case SCM_TYPE_GITHUB:
+				// GitHub API uses token auth: username and password are stored in the token information
+				username = tokenRecord.RefreshToken
+				password = string(authTokenDecodedBytes)
+			case SCM_TYPE_GITLAB:
+				// GitLab API uses token auth: username and password are stored in the token information
+				username = tokenRecord.RefreshToken
+				password = string(authTokenDecodedBytes)
+			default:
+				return StratosProject{}, tempDir, fmt.Errorf("Unknown SCM type '%s'", info.SCM)
+			}
+
+			if len(username) == 0 {
+				return StratosProject{}, tempDir, errors.New("Username is empty")
+			}
+
+			// mask the credentials for the logs and env var
+			parsedURL.User = url.UserPassword("REDACTED", "REDACTED")
+			loggerURL = parsedURL.String()
+
+			// apply the correct credentials
+			parsedURL.User = url.UserPassword(username, password)
+			cloneURL = parsedURL.String()
+		}
+	}
+
+	log.Debugf("GitSCM SCM: %s, Source: %s, branch %s, url: %s", info.SCM, info.Project, info.Branch, loggerURL)
 	cloneDetails := CloneDetails{
-		Url:    info.URL,
-		Branch: info.Branch,
-		Commit: info.CommitHash,
+		Url:       cloneURL,
+		LoggerUrl: loggerURL,
+		Branch:    info.Branch,
+		Commit:    info.CommitHash,
+		SkipSSL:   skipSLL,
 	}
 	info.CommitHash, err = cloneRepository(cloneDetails, clientWebSocket, tempDir)
 	if err != nil {
@@ -536,16 +603,16 @@ func cloneRepository(cloneDetails CloneDetails, clientWebSocket *websocket.Conn,
 
 	if len(cloneDetails.Branch) == 0 {
 		err := errors.New("No branch supplied")
-		log.Infof("Failed to checkout repo %s due to %+v", cloneDetails.Url, err)
+		log.Infof("Failed to checkout repo %s due to %+v", cloneDetails.LoggerUrl, err)
 		sendErrorMessage(clientWebSocket, err, CLOSE_FAILED_NO_BRANCH)
 		return "", err
 	}
 
 	vcsGit := GetVCS()
 
-	err := vcsGit.Create(tempDir, cloneDetails.Url, cloneDetails.Branch)
+	err := vcsGit.Create(cloneDetails.SkipSSL, tempDir, cloneDetails.Url, cloneDetails.Branch)
 	if err != nil {
-		log.Infof("Failed to clone repo %s due to %+v", cloneDetails.Url, err)
+		log.Infof("Failed to clone repo %s due to %+v", cloneDetails.LoggerUrl, err)
 		sendErrorMessage(clientWebSocket, err, CLOSE_FAILED_CLONE)
 		return "", err
 	}

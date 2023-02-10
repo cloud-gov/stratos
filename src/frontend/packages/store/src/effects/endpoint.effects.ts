@@ -27,6 +27,7 @@ import { DispatchOnlyAppState } from '../app-state';
 import { BrowserStandardEncoder } from '../browser-encoder';
 import { entityCatalog } from '../entity-catalog/entity-catalog';
 import { EndpointType } from '../extension-types';
+import { httpErrorResponseToSafeString } from '../jetstream';
 import { ApiRequestTypes } from '../reducers/api-request-reducer/request-helpers';
 import { stratosEntityCatalog } from '../stratos-entity-catalog';
 import { NormalizedResponse } from '../types/api.types';
@@ -106,7 +107,7 @@ export class EndpointsEffect {
       if (action.authType === 'sso') {
         const loc = window.location.protocol + '//' + window.location.hostname +
           (window.location.port ? ':' + window.location.port : '');
-        const ssoUrl = '/pp/v1/auth/login/cnsi?guid=' + action.guid + '&state=' + encodeURIComponent(loc);
+        const ssoUrl = '/api/v1/tokens?guid=' + action.guid + '&state=' + encodeURIComponent(loc);
         window.location.assign(ssoUrl);
         return [];
       }
@@ -143,48 +144,43 @@ export class EndpointsEffect {
 
       return this.doEndpointAction(
         action,
-        '/pp/v1/auth/login/cnsi',
+        '/api/v1/tokens',
         params,
         null,
         action.endpointsType,
         body,
-        response => response && response.error && response.error.error ? response.error.error : 'Could not connect, please try again'
+        response => httpErrorResponseToSafeString(response) || 'Could not connect, please try again',
       );
     }));
 
   @Effect() disconnect$ = this.actions$.pipe(
     ofType<DisconnectEndpoint>(DISCONNECT_ENDPOINTS),
     mergeMap(action => {
-      const params: HttpParams = new HttpParams({
-        fromObject: {
-          cnsi_guid: action.guid
-        }
-      });
 
       return this.doEndpointAction(
         action,
-        '/pp/v1/auth/logout/cnsi',
-        params,
+        '/api/v1/tokens/' + action.guid,
         null,
-        action.endpointsType
+        null,
+        action.endpointsType,
+        null,
+        null,
+        'DELETE'
       );
     }));
 
   @Effect() unregister$ = this.actions$.pipe(
     ofType<UnregisterEndpoint>(UNREGISTER_ENDPOINTS),
     mergeMap(action => {
-      const params: HttpParams = new HttpParams({
-        fromObject: {
-          cnsi_guid: action.guid
-        }
-      });
-
       return this.doEndpointAction(
         action,
-        '/pp/v1/unregister',
-        params,
+        '/api/v1/endpoints/' + action.guid,
+        null,
         'delete',
-        action.endpointsType
+        action.endpointsType,
+        null,
+        null,
+        'DELETE'
       );
     }));
 
@@ -198,7 +194,8 @@ export class EndpointsEffect {
         skip_ssl_validation: action.skipSslValidation ? 'true' : 'false',
         cnsi_client_id: action.clientID,
         cnsi_client_secret: action.clientSecret,
-        sso_allowed: action.ssoAllowed ? 'true' : 'false'
+        sso_allowed: action.ssoAllowed ? 'true' : 'false',
+        create_system_endpoint: action.createSystemEndpoint ? 'true' : 'false'
       };
       // Do not include sub_type in HttpParams if it doesn't exist (falsies get stringified and sent)
       if (action.endpointSubType) {
@@ -213,8 +210,12 @@ export class EndpointsEffect {
 
       return this.doEndpointAction(
         action,
-        '/pp/v1/register/' + action.endpointsType,
-        new HttpParams({}),
+        '/api/v1/endpoints',
+        new HttpParams({
+          fromObject: {
+            endpoint_type: action.endpointsType
+          }
+        }),
         'create',
         action.endpointsType,
         body,
@@ -242,7 +243,7 @@ export class EndpointsEffect {
 
       return this.doEndpointAction(
         action,
-        '/pp/v1/endpoint/' + action.id,
+        '/api/v1/endpoints/' + action.id,
         new HttpParams({}),
         'update',
         action.endpointsType,
@@ -252,9 +253,8 @@ export class EndpointsEffect {
     }));
 
   private processUpdateError(e: HttpErrorResponse): string {
-    const err = e.error ? e.error.error : {};
-    let message = 'There was a problem updating the endpoint' +
-      `${err.error ? ' (' + err.error + ').' : ''}`;
+    let message = 'There was a problem updating the endpoint. ' +
+      httpErrorResponseToSafeString(e);
     if (e.status === 403) {
       message = `${message}. Please check \"Skip SSL validation for the endpoint\" if the certificate issuer is trusted`;
     }
@@ -262,9 +262,8 @@ export class EndpointsEffect {
   }
 
   private processRegisterError(e: HttpErrorResponse): string {
-    let message = 'There was a problem creating the endpoint. ' +
-      `Please ensure the endpoint address is correct and try again` +
-      `${e.error.error ? ' (' + e.error.error + ').' : ''}`;
+    let message = 'There was a problem creating the endpoint. Please ensure the endpoint address is correct and try again. ' +
+      httpErrorResponseToSafeString(e);
     if (e.status === 403) {
       message = `${e.error.error}. Please check \"Skip SSL validation for the endpoint\" if the certificate issuer is trusted`;
     }
@@ -282,12 +281,14 @@ export class EndpointsEffect {
     endpointType: EndpointType,
     body?: string,
     errorMessageHandler?: (e: any) => string,
+    method: string = 'POST',
   ) {
 
     const endpointEntityKey = entityCatalog.getEntityKey(apiAction);
     this.store.dispatch(new StartRequestAction(apiAction, apiActionType));
-    return this.http.post(url, body || {}, {
-      params
+    return this.http.request(method, url, {
+      params,
+      body: body || {}
     }).pipe(
       mergeMap((endpoint: EndpointModel) => {
         const actions = [];

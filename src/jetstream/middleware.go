@@ -12,7 +12,7 @@ import (
 
 	"github.com/gorilla/context"
 	"github.com/govau/cf-common/env"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
@@ -23,9 +23,6 @@ const cfSessionCookieName = "JSESSIONID"
 
 // Header to communicate the configured Cookie Domain
 const StratosDomainHeader = "x-stratos-domain"
-
-// Header to communicate whether SSO Login is enabled and if so, any configured options
-const StratosSSOHeader = "x-stratos-sso-login"
 
 // Header to communicate any error during SSO
 const StratosSSOErrorHeader = "x-stratos-sso-error"
@@ -41,17 +38,6 @@ const APIKeyAuthScheme = "Bearer"
 
 func handleSessionError(config interfaces.PortalConfig, c echo.Context, err error, doNotLog bool, msg string) error {
 	log.Debug("handleSessionError")
-
-	// Add header so front-end knows SSO login is enabled
-	if config.SSOLogin {
-		// A non-empty SSO Header means SSO is enabled
-		// Use the string "enabled" or send the options string if we have one
-		options := "enabled"
-		if len(config.SSOOptions) > 0 {
-			options = config.SSOOptions
-		}
-		c.Response().Header().Set(StratosSSOHeader, options)
-	}
 
 	if strings.Contains(err.Error(), "dial tcp") {
 		return interfaces.NewHTTPShadowError(
@@ -92,6 +78,26 @@ func (p *portalProxy) sessionMiddleware() echo.MiddlewareFunc {
 	return p.sessionMiddlewareWithConfig(MiddlewareConfig{})
 }
 
+func (p *portalProxy) clearSessionCookie(c echo.Context, setCookieDomain bool) {
+	if setCookieDomain {
+		// Tell the frontend what the Cookie Domain is so it can check if sessions will work
+		// (used in verifySession)
+		c.Response().Header().Set(StratosDomainHeader, p.Config.CookieDomain)
+	}
+
+	// Clear any session cookie
+	cookie := new(http.Cookie)
+	cookie.Name = p.SessionCookieName
+	cookie.Value = ""
+	cookie.Expires = time.Now().Add(-24 * time.Hour)
+	cookie.Domain = p.SessionStoreOptions.Domain
+	cookie.HttpOnly = p.SessionStoreOptions.HttpOnly
+	cookie.Secure = p.SessionStoreOptions.Secure
+	cookie.Path = p.SessionStoreOptions.Path
+	cookie.MaxAge = 0
+	c.SetCookie(cookie)
+}
+
 func (p *portalProxy) sessionMiddlewareWithConfig(config MiddlewareConfig) echo.MiddlewareFunc {
 	// Default skipper function always returns false
 	if config.Skipper == nil {
@@ -115,26 +121,8 @@ func (p *portalProxy) sessionMiddlewareWithConfig(config MiddlewareConfig) echo.
 				return h(c)
 			}
 
-			// Don't log an error if we are verifying the session, as a failure is not an error
-			isVerify := strings.HasSuffix(c.Request().RequestURI, "/auth/session/verify")
-			if isVerify {
-				// Tell the frontend what the Cookie Domain is so it can check if sessions will work
-				c.Response().Header().Set(StratosDomainHeader, p.Config.CookieDomain)
-			}
-
-			// Clear any session cookie
-			cookie := new(http.Cookie)
-			cookie.Name = p.SessionCookieName
-			cookie.Value = ""
-			cookie.Expires = time.Now().Add(-24 * time.Hour)
-			cookie.Domain = p.SessionStoreOptions.Domain
-			cookie.HttpOnly = p.SessionStoreOptions.HttpOnly
-			cookie.Secure = p.SessionStoreOptions.Secure
-			cookie.Path = p.SessionStoreOptions.Path
-			cookie.MaxAge = 0
-			c.SetCookie(cookie)
-
-			return handleSessionError(p.Config, c, err, isVerify, "User session could not be found")
+			p.clearSessionCookie(c, false)
+			return handleSessionError(p.Config, c, err, false, "User session could not be found")
 		}
 	}
 }
@@ -261,6 +249,67 @@ func (p *portalProxy) adminMiddleware(h echo.HandlerFunc) echo.HandlerFunc {
 		}
 
 		return handleSessionError(p.Config, c, errors.New("Unauthorized"), false, "You must be a Stratos admin to access this API")
+	}
+}
+
+// endpointAdminMiddleware - checks if user is admin or endpointadmin
+func (p *portalProxy) endpointAdminMiddleware(h echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		log.Debug("endpointAdminMiddleware")
+
+		userID, err := p.GetSessionValue(c, "user_id")
+		if err != nil {
+			return c.NoContent(http.StatusUnauthorized)
+		}
+
+		u, err := p.StratosAuthService.GetUser(userID.(string))
+		if err != nil {
+			return c.NoContent(http.StatusUnauthorized)
+		}
+
+		endpointAdmin := strings.Contains(strings.Join(u.Scopes, ""), "stratos.endpointadmin")
+
+		if endpointAdmin == false && u.Admin == false {
+			return handleSessionError(p.Config, c, errors.New("Unauthorized"), false, "You must be a Stratos admin or endpointAdmin to access this API")
+		}
+
+		return h(c)
+	}
+}
+
+// endpointUpdateDeleteMiddleware - checks if user has necessary permissions to modify endpoint
+func (p *portalProxy) endpointUpdateDeleteMiddleware(h echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		log.Debug("endpointUpdateDeleteMiddleware")
+		userID, err := p.GetSessionValue(c, "user_id")
+		if err != nil {
+			return c.NoContent(http.StatusUnauthorized)
+		}
+
+		u, err := p.StratosAuthService.GetUser(userID.(string))
+		if err != nil {
+			return c.NoContent(http.StatusUnauthorized)
+		}
+
+		endpointID := c.Param("id")
+
+		cnsiRecord, err := p.GetCNSIRecord(endpointID)
+		if err != nil {
+			return c.NoContent(http.StatusUnauthorized)
+		}
+
+		// endpoint created by admin when no id is saved
+		adminEndpoint := len(cnsiRecord.Creator) == 0
+
+		if adminEndpoint && !u.Admin {
+			return handleSessionError(p.Config, c, errors.New("Unauthorized"), false, "You must be Stratos admin to modify this endpoint.")
+		}
+
+		if !adminEndpoint && !u.Admin && cnsiRecord.Creator != userID.(string) {
+			return handleSessionError(p.Config, c, errors.New("Unauthorized"), false, "EndpointAdmins are not allowed to modify endpoints created by other endpointAdmins.")
+		}
+
+		return h(c)
 	}
 }
 

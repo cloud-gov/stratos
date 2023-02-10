@@ -1,12 +1,14 @@
 package interfaces
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces/config"
 	"github.com/gorilla/sessions"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 )
 
 type AuthHandlerFunc func(tokenRec TokenRecord, cnsi CNSIRecord) (*http.Response, error)
@@ -52,6 +54,8 @@ type CNSIRecord struct {
 	SSOAllowed             bool     `json:"sso_allowed"`
 	SubType                string   `json:"sub_type"`
 	Metadata               string   `json:"metadata"`
+	Local                  bool     `json:"local"`
+	Creator                string   `json:"creator"`
 }
 
 // ConnectedEndpoint
@@ -68,6 +72,8 @@ type ConnectedEndpoint struct {
 	TokenMetadata          string   `json:"-"`
 	SubType                string   `json:"sub_type"`
 	EndpointMetadata       string   `json:"metadata"`
+	Local                  bool     `json:"local"`
+	Creator                string   `json:"creator"`
 }
 
 const (
@@ -77,11 +83,19 @@ const (
 	AuthTypeOIDC = "OIDC"
 	// AuthTypeHttpBasic means HTTP Basic auth
 	AuthTypeHttpBasic = "HttpBasic"
+	// AuthTypeBearer is http header auth with bearer prefix
+	AuthTypeBearer = "Bearer"
+	// AuthTypeToken is http header auth with token prefix
+	AuthTypeToken = "Token"
 )
 
 const (
 	// AuthConnectTypeCreds means authenticate with username/password credentials
 	AuthConnectTypeCreds = "creds"
+	// AuthConnectTypeBearer is authentication with an API token  and a auth header prefix of 'bearer'
+	AuthConnectTypeBearer = "bearer"
+	// AuthConnectTypeToken is authentication with a token and a auth header prefix of 'token'
+	AuthConnectTypeToken = "token"
 	// AuthConnectTypeNone means no authentication
 	AuthConnectTypeNone = "none"
 )
@@ -166,6 +180,7 @@ type ProxyRequestInfo struct {
 }
 
 type SessionStorer interface {
+	New(r *http.Request, name string) (*sessions.Session, error)
 	Get(r *http.Request, name string) (*sessions.Session, error)
 	Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error
 }
@@ -176,6 +191,13 @@ type ConnectedUser struct {
 	Name   string   `json:"name"`
 	Admin  bool     `json:"admin"`
 	Scopes []string `json:"scopes"`
+}
+
+// CreatorInfo - additional information about the user who created an endpoint
+type CreatorInfo struct {
+	Name   string `json:"name"`
+	Admin  bool   `json:"admin"`
+	System bool   `json:"system"`
 }
 
 type JWTUserTokenInfo struct {
@@ -215,10 +237,12 @@ type Info struct {
 	PluginConfig  map[string]string                     `json:"plugin-config,omitempty"`
 	Diagnostics   *Diagnostics                          `json:"diagnostics,omitempty"`
 	Configuration struct {
-		TechPreview        bool   `json:"enableTechPreview"`
-		ListMaxSize        int64  `json:"listMaxSize,omitempty"`
-		ListAllowLoadMaxed bool   `json:"listAllowLoadMaxed,omitempty"`
-		APIKeysEnabled     string `json:"APIKeysEnabled"`
+		TechPreview               bool   `json:"enableTechPreview"`
+		ListMaxSize               int64  `json:"listMaxSize,omitempty"`
+		ListAllowLoadMaxed        bool   `json:"listAllowLoadMaxed,omitempty"`
+		APIKeysEnabled            string `json:"APIKeysEnabled"`
+		HomeViewShowFavoritesOnly bool   `json:"homeViewShowFavoritesOnly"`
+		UserEndpointsEnabled      string `json:"userEndpointsEnabled"`
 	} `json:"config"`
 }
 
@@ -227,6 +251,7 @@ type EndpointDetail struct {
 	*CNSIRecord
 	EndpointMetadata  interface{}       `json:"endpoint_metadata,omitempty"`
 	User              *ConnectedUser    `json:"user"`
+	Creator           *CreatorInfo      `json:"creator"`
 	Metadata          map[string]string `json:"metadata,omitempty"`
 	TokenMetadata     string            `json:"-"`
 	SystemSharedToken bool              `json:"system_shared_token"`
@@ -246,6 +271,8 @@ const (
 	Remote AuthEndpointType = "remote"
 	//Local - String representation of remote auth endpoint type
 	Local AuthEndpointType = "local"
+	//AuthNone - String representation of no authentication
+	AuthNone AuthEndpointType = "none"
 )
 
 //AuthEndpointTypes - Allows lookup of internal string representation by the
@@ -253,6 +280,7 @@ const (
 var AuthEndpointTypes = map[string]AuthEndpointType{
 	"remote": Remote,
 	"local":  Local,
+	"none":   AuthNone,
 }
 
 // ConsoleConfig is essential configuration settings
@@ -274,6 +302,11 @@ const defaultAdminScope = "stratos.admin"
 
 // IsSetupComplete indicates if we have enough config
 func (consoleConfig *ConsoleConfig) IsSetupComplete() bool {
+
+	// No auth, then setup is complete
+	if AuthEndpointTypes[consoleConfig.AuthEndpointType] == AuthNone {
+		return true
+	}
 
 	// Local user - check setup complete
 	if AuthEndpointTypes[consoleConfig.AuthEndpointType] == Local {
@@ -314,21 +347,20 @@ func (consoleConfig *ConsoleConfig) IsSetupComplete() bool {
 
 // CNSIRequest
 type CNSIRequest struct {
-	GUID     string `json:"-"`
-	UserGUID string `json:"-"`
-
-	Method      string      `json:"-"`
-	Body        []byte      `json:"-"`
-	Header      http.Header `json:"-"`
-	URL         *url.URL    `json:"-"`
-	StatusCode  int         `json:"statusCode"`
-	Status      string      `json:"status"`
-	PassThrough bool        `json:"-"`
-	LongRunning bool        `json:"-"`
-
-	Response     []byte `json:"-"`
-	Error        error  `json:"-"`
-	ResponseGUID string `json:"-"`
+	GUID         string       `json:"-"`
+	UserGUID     string       `json:"-"`
+	Method       string       `json:"-"`
+	Body         []byte       `json:"-"`
+	Header       http.Header  `json:"-"`
+	URL          *url.URL     `json:"-"`
+	StatusCode   int          `json:"statusCode"`
+	Status       string       `json:"status"`
+	PassThrough  bool         `json:"-"`
+	LongRunning  bool         `json:"-"`
+	Response     []byte       `json:"-"`
+	Error        error        `json:"-"`
+	ResponseGUID string       `json:"-"`
+	Token        *TokenRecord `json:"-"` // Optional Token record to use instead of looking up
 }
 
 type PortalConfig struct {
@@ -352,7 +384,7 @@ type PortalConfig struct {
 	AutoRegisterCFName                 string   `configName:"AUTO_REG_CF_NAME"`
 	SSOLogin                           bool     `configName:"SSO_LOGIN"`
 	SSOOptions                         string   `configName:"SSO_OPTIONS"`
-	SSOWhiteList                       string   `configName:"SSO_WHITELIST"`
+	SSOAllowList                       string   `configName:"SSO_ALLOWLIST,SSO_WHITELIST"`
 	AuthEndpointType                   string   `configName:"AUTH_ENDPOINT_TYPE"`
 	CookieDomain                       string   `configName:"COOKIE_DOMAIN"`
 	LogLevel                           string   `configName:"LOG_LEVEL"`
@@ -371,7 +403,9 @@ type PortalConfig struct {
 	DatabaseProviderName               string
 	EnableTechPreview                  bool `configName:"ENABLE_TECH_PREVIEW"`
 	CanMigrateDatabaseSchema           bool
-	APIKeysEnabled                     config.APIKeysConfigValue `configName:"API_KEYS_ENABLED"`
+	APIKeysEnabled                     config.APIKeysConfigValue       `configName:"API_KEYS_ENABLED"`
+	HomeViewShowFavoritesOnly          bool                            `configName:"HOME_VIEW_SHOW_FAVORITES_ONLY"`
+	UserEndpointsEnabled               config.UserEndpointsConfigValue `configName:"USER_ENDPOINTS_ENABLED"`
 	// CanMigrateDatabaseSchema indicates if we can safely perform migrations
 	// This depends on the deployment mechanism and the database config
 	// e.g. if running in Cloud Foundry with a shared DB, then only the 0-index application instance
@@ -381,4 +415,61 @@ type PortalConfig struct {
 // SetCanPerformMigrations updates the state that records if we can perform Database migrations
 func (c *PortalConfig) SetCanPerformMigrations(value bool) {
 	c.CanMigrateDatabaseSchema = c.CanMigrateDatabaseSchema && value
+}
+
+type LoginToCNSIParams struct {
+	CNSIGUID     string `json:"cnsi_guid" form:"cnsi_guid" query:"cnsi_guid"`
+	SystemShared string `json:"system_shared" form:"system_shared" query:"system_shared"`
+	ConnectType  string `json:"connect_type" form:"connect_type" query:"connect_type"`
+	Username     string `json:"username" form:"username" query:"username"`
+	Password     string `json:"password" form:"password" query:"password"`
+}
+
+type RegisterEndpointParams struct {
+	EndpointType         string `json:"endpoint_type" form:"endpoint_type" query:"endpoint_type"`
+	CNSIName             string `json:"cnsi_name" form:"cnsi_name" query:"cnsi_name"`
+	APIEndpoint          string `json:"api_endpoint" form:"api_endpoint" query:"api_endpoint"`
+	SkipSSLValidation    string `json:"skip_ssl_validation" form:"skip_ssl_validation" query:"skip_ssl_validation"`
+	SSOAllowed           string `json:"sso_allowed" form:"sso_allowed" query:"sso_allowed"`
+	CNSIClientID         string `json:"cnsi_client_id" form:"cnsi_client_id" query:"cnsi_client_id"`
+	CNSIClientSecret     string `json:"cnsi_client_secret" form:"cnsi_client_secret" query:"cnsi_client_secret"`
+	SubType              string `json:"sub_type" form:"sub_type" query:"sub_type"`
+	CreateSystemEndpoint string `json:"create_system_endpoint" form:"create_system_endpoint" query:"create_system_endpoint"`
+}
+
+type UpdateEndpointParams struct {
+	ID            string `json:"id" form:"id" query:"id"`
+	Name          string `json:"name" form:"name" query:"name"`
+	SkipSSL       string `json:"skipSSL" form:"skipSSL" query:"skipSSL"`
+	SetClientInfo string `json:"setClientInfo" form:"setClientInfo" query:"setClientInfo"`
+	ClientID      string `json:"clientID" form:"clientID" query:"clientID"`
+	ClientSecret  string `json:"clientSecret" form:"clientSecret" query:"clientSecret"`
+	AllowSSO      string `json:"allowSSO" form:"allowSSO" query:"allowSSO"`
+}
+
+// BindOnce -- allows to call echo.Context.Bind() multiple times on the same request
+// After calling Bind(), request body stream is closed and the context can't be bound again.
+// Bound struct is stored in the context store after the first call and retrieved from store
+// on subsequent calls.
+func BindOnce(params interface{}, c echo.Context) error {
+	typeStr := reflect.TypeOf(params).String()
+	ctxType := c.Get("magicBindType")
+	if ctxType != nil && ctxType != typeStr {
+		// Prevent calling c.Bind() multiple times with different params interfaces.
+		panic(fmt.Sprintf("Calling BindOnce on %v after it was called on %v", typeStr, ctxType))
+	}
+
+	ctxVal := c.Get("magicBindVal")
+	if ctxVal == nil {
+		if err := c.Bind(params); err != nil {
+			return err
+		}
+
+		c.Set("magicBindType", typeStr)
+		c.Set("magicBindVal", params)
+	} else {
+		reflect.ValueOf(params).Elem().Set(reflect.ValueOf(ctxVal).Elem())
+	}
+
+	return nil
 }

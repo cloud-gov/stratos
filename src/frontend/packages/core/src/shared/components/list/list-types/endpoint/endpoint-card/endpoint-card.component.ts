@@ -9,7 +9,7 @@ import {
   ViewContainerRef,
 } from '@angular/core';
 import { Store } from '@ngrx/store';
-import { Observable, of, ReplaySubject, Subscription } from 'rxjs';
+import { combineLatest, Observable, of, ReplaySubject, Subscription } from 'rxjs';
 import { map, startWith } from 'rxjs/operators';
 
 import { AppState } from '../../../../../../../../store/src/app-state';
@@ -18,11 +18,12 @@ import { entityCatalog } from '../../../../../../../../store/src/entity-catalog/
 import {
   StratosCatalogEndpointEntity,
 } from '../../../../../../../../store/src/entity-catalog/entity-catalog-entity/entity-catalog-entity';
-import { FavoritesConfigMapper } from '../../../../../../../../store/src/favorite-config-mapper';
 import { EndpointModel } from '../../../../../../../../store/src/types/endpoint.types';
 import { MenuItem } from '../../../../../../../../store/src/types/menu-item.types';
 import { StratosStatus } from '../../../../../../../../store/src/types/shared.types';
 import { UserFavoriteEndpoint } from '../../../../../../../../store/src/types/user-favorites.types';
+import { UserFavoriteManager } from '../../../../../../../../store/src/user-favorite-manager';
+import { EndpointsService } from '../../../../../../core/endpoints.service';
 import { safeUnsubscribe } from '../../../../../../core/utils.service';
 import { coreEndpointListDetailsComponents } from '../../../../../../features/endpoints/endpoint-helpers';
 import { createMetaCardMenuItemSeparator } from '../../../list-cards/meta-card/meta-card-base/meta-card.component';
@@ -31,6 +32,9 @@ import { BaseEndpointsDataSource } from '../base-endpoints-data-source';
 import { EndpointListDetailsComponent, EndpointListHelper } from '../endpoint-list.helpers';
 import { RouterNav } from './../../../../../../../../store/src/actions/router.actions';
 import { CopyToClipboardComponent } from './../../../../copy-to-clipboard/copy-to-clipboard.component';
+import { SessionService } from '../../../../../services/session.service';
+import { CurrentUserPermissionsService } from '../../../../../../core/permissions/current-user-permissions.service';
+import { StratosCurrentUserPermissions } from '../../../../../../core/permissions/stratos-user-permissions.checker';
 
 @Component({
   selector: 'app-endpoint-card',
@@ -53,6 +57,7 @@ export class EndpointCardComponent extends CardCell<EndpointModel> implements On
   public cardStatus$: Observable<StratosStatus>;
   private subs: Subscription[] = [];
   public connectionStatus: string;
+  public viewCreator$: Observable<boolean>;
 
   private componentRef: ComponentRef<EndpointListDetailsComponent>;
 
@@ -65,41 +70,43 @@ export class EndpointCardComponent extends CardCell<EndpointModel> implements On
 
   @ViewChild('copyToClipboard') copyToClipboard: CopyToClipboardComponent;
 
-  private pRow: EndpointModel;
   @Input('row')
   set row(row: EndpointModel) {
+    super.row = row;
     if (!row) {
       return;
     }
-    this.pRow = row;
 
     this.endpointCatalogEntity = entityCatalog.getEndpoint(row.cnsi_type, row.sub_type);
     this.address = getFullEndpointApiUrl(row);
     this.rowObs.next(row);
     if (this.endpointCatalogEntity) {
-      const metadata = this.endpointCatalogEntity.builders.entityBuilder.getMetadata(row);
       this.endpointLink = row.connectionStatus === 'connected' || this.endpointCatalogEntity.definition.unConnectable ?
-        this.endpointCatalogEntity.builders.entityBuilder.getLink(metadata) : null;
+        EndpointsService.getLinkForEndpoint(row) : null;
       this.connectionStatus = this.endpointCatalogEntity.definition.unConnectable ? 'connected' : row.connectionStatus;
     }
     this.updateInnerComponent();
 
   }
   get row(): EndpointModel {
-    return this.pRow;
+    return super.row;
   }
 
-  private pDs: BaseEndpointsDataSource;
   @Input('dataSource')
   set dataSource(ds: BaseEndpointsDataSource) {
-    this.pDs = ds;
+    super.dataSource = ds;
+
     // Don't show card menu if the ds only provides a single endpoint type (for instance the cf endpoint page)
     if (ds && !ds.dsEndpointType && !this.cardMenu) {
-      this.cardMenu = this.endpointListHelper.endpointActions().map(endpointAction => ({
-        label: endpointAction.label,
-        action: () => endpointAction.action(this.pRow),
-        can: endpointAction.createVisible(this.rowObs)
-      }));
+      this.cardMenu = this.endpointListHelper.endpointActions(true).map(endpointAction => {
+        const separator = endpointAction.label === '-';
+        return {
+          label: endpointAction.label,
+          action: () => endpointAction.action(this.row),
+          can: endpointAction.createVisible ? endpointAction.createVisible(this.rowObs) : null,
+          separator
+        };
+      });
 
       // Add a copy address to clipboard
       this.cardMenu.push(createMetaCardMenuItemSeparator());
@@ -112,27 +119,33 @@ export class EndpointCardComponent extends CardCell<EndpointModel> implements On
 
     this.updateCardStatus();
   }
-  get dataSource() {
-    return this.pDs;
-  }
 
   constructor(
     private store: Store<AppState>,
     private endpointListHelper: EndpointListHelper,
     private componentFactoryResolver: ComponentFactoryResolver,
-    private favoritesConfigMapper: FavoritesConfigMapper,
+    private userFavoriteManager: UserFavoriteManager,
+    private currentUserPermissionsService: CurrentUserPermissionsService,
+    private sessionService: SessionService,
   ) {
     super();
     this.endpointIds$ = this.endpointIds.asObservable();
   }
 
   ngOnInit() {
-    const favorite = this.favoritesConfigMapper.getFavoriteEndpointFromEntity(this.row);
-    if (favorite) {
-      this.favorite = this.favoritesConfigMapper.hasFavoriteConfigForType(favorite) ? favorite : null;
-    }
+    this.favorite = this.userFavoriteManager.getFavoriteEndpointFromEntity(this.row);
     const e = this.endpointCatalogEntity.definition;
     this.hasDetails = !!e && !!e.listDetailsComponent;
+    this.viewCreator$ = combineLatest([
+      this.sessionService.userEndpointsEnabled(),
+      this.sessionService.userEndpointsNotDisabled(),
+      this.currentUserPermissionsService.can(StratosCurrentUserPermissions.EDIT_ADMIN_ENDPOINT),
+      this.currentUserPermissionsService.can(StratosCurrentUserPermissions.EDIT_ENDPOINT)
+    ]).pipe(
+      map(([userEndpointsEnabled, userEndpointsNotDisabled, isAdmin, isEndpointAdmin]) => {
+        return (userEndpointsEnabled && (isAdmin || isEndpointAdmin)) || (userEndpointsNotDisabled && isAdmin);
+      })
+    );
   }
 
   ngOnDestroy(): void {
@@ -145,7 +158,7 @@ export class EndpointCardComponent extends CardCell<EndpointModel> implements On
   }
 
   updateInnerComponent() {
-    if (!this.endpointDetails || !this.pRow) {
+    if (!this.endpointDetails || !this.row) {
       return;
     }
     const e = this.endpointCatalogEntity.definition;
@@ -161,10 +174,10 @@ export class EndpointCardComponent extends CardCell<EndpointModel> implements On
     }
 
     if (this.component) {
-      this.component.row = this.pRow;
+      this.component.row = this.row;
       this.component.isTable = false;
     }
-    this.component.row = this.pRow;
+    this.component.row = this.row;
     this.componentRef.changeDetectorRef.detectChanges();
 
 

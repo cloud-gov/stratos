@@ -1,6 +1,6 @@
 import { Action } from '@ngrx/store';
 
-import { DashboardState } from '../reducers/dashboard-reducer';
+import { DashboardState, defaultDashboardState } from '../types/dashboard.types';
 import { StratosTheme } from '../types/theme.types';
 
 export const OPEN_SIDE_NAV = '[Dashboard] Open side nav';
@@ -13,11 +13,14 @@ export const DISABLE_SIDE_NAV_MOBILE_MODE = '[Dashboard] Disable mobile nav';
 export const TIMEOUT_SESSION = '[Dashboard] Timeout Session';
 export const ENABLE_POLLING = '[Dashboard] Enable Polling';
 export const SET_STRATOS_THEME = '[Dashboard] Set Theme';
-export const GRAVATAR_ENABLED = '[Dashboard] Gravatar ENabled';
+export const GRAVATAR_ENABLED = '[Dashboard] Gravatar Enabled';
+export const HOME_CARD_LAYOUT = '[Dashboard] Home Card Layout';
 
 export const HYDRATE_DASHBOARD_STATE = '[Dashboard] Hydrate dashboard state';
 
 export const SET_PLUGIN_DASHBOARD_VALUE = '[Dashboard] Set Plugin Dashboard Value';
+
+export const SET_DASHBOARD_STATE_VALUE = '[Dashboard] Set Dashboard State Value';
 
 export class OpenSideNav implements Action {
   constructor() { }
@@ -56,6 +59,12 @@ export class SetGravatarEnabledAction implements Action {
   constructor(public enableGravatar = true) { }
   type = GRAVATAR_ENABLED;
 }
+
+export class SetHomeCardLayoutAction implements Action {
+  constructor(public id = 0) { }
+  type = HOME_CARD_LAYOUT;
+}
+
 export class HydrateDashboardStateAction implements Action {
   constructor(public dashboardState: DashboardState) { }
   type = HYDRATE_DASHBOARD_STATE;
@@ -64,4 +73,13 @@ export class HydrateDashboardStateAction implements Action {
 export class SetThemeAction implements Action {
   constructor(public theme: StratosTheme) { }
   type = SET_STRATOS_THEME;
+}
+
+export class SetDashboardStateValueAction implements Action {
+  constructor(public prop: string, public value: any) {
+    if (!defaultDashboardState.hasOwnProperty(prop)) {
+      console.warn(`SetDashboardStateValueAction: Unknown property ${prop}`);
+    }
+  }
+  type = SET_DASHBOARD_STATE_VALUE;
 }

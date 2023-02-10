@@ -39,7 +39,7 @@ export class StratosConfig implements Logger {
 
   private loggingEnabled = true;
 
-  private packages: Packages;
+  public packages: Packages;
 
   constructor(dir: string, options?: any, loggingEnabled = true) {
     this.angularJsonFile = this.findFileOrFolderInChain(dir, 'angular.json');
@@ -53,7 +53,7 @@ export class StratosConfig implements Logger {
     this.stratosConfig = {};
     if (this.angularJsonFile) {
       // Read stratos.yaml if we can
-      const stratosYamlFile = path.join(path.dirname(this.angularJsonFile), 'stratos.yaml');
+      const stratosYamlFile = this.getStratosYamlPath();
       if (fs.existsSync(stratosYamlFile)) {
         try {
           this.stratosConfig = yaml.safeLoad(fs.readFileSync(stratosYamlFile, 'utf8'));
@@ -68,7 +68,10 @@ export class StratosConfig implements Logger {
     }
 
     // Exclude the default packages... unless explicity `include`d
-    this.excludeExamples()
+    this.applyDefaultExcludes();
+
+    // Exclude packages from the STRATOS_BUILD_REMOVE environment variable
+    this.excludeFromEnvVar();
 
     this.packageJsonFile = this.findFileOrFolderInChain(this.rootDir, 'package.json');
     if (this.packageJsonFile !== null) {
@@ -104,18 +107,31 @@ export class StratosConfig implements Logger {
     }
   }
 
-  private excludeExamples() {
-    const examplePackages = ['@example/theme', '@example/extensions']
+  private getStratosYamlPath(): string {
+    if (process.env.STRATOS_YAML) {
+      return process.env.STRATOS_YAML;
+    }
+
+    return path.join(path.dirname(this.angularJsonFile), 'stratos.yaml');
+  }
+
+  private applyDefaultExcludes() {
+    const defaultExcludedPackages = ['@example/theme', '@example/extensions', '@stratosui/desktop-extensions'];
+    if (this.stratosConfig && this.stratosConfig.packages && this.stratosConfig.packages.desktop) {
+      defaultExcludedPackages.pop();
+      this.log('Building with desktop package');
+    }
+
     const exclude = [];
-    // Are examples explicitly in the include section?
+    // Are the default excluded packages explicitly in the include section?
     if (this.stratosConfig &&
       this.stratosConfig.packages &&
       this.stratosConfig.packages.include &&
       this.stratosConfig.packages.include.length > 0 // Will check if this is an array
     ) {
-      examplePackages.forEach(ep => this.addIfMissing(this.stratosConfig.packages.include, ep, exclude))
+      defaultExcludedPackages.forEach(ep => this.addIfMissing(this.stratosConfig.packages.include, ep, exclude));
     } else {
-      exclude.push(...examplePackages);
+      exclude.push(...defaultExcludedPackages);
     }
 
     // No op
@@ -123,12 +139,12 @@ export class StratosConfig implements Logger {
       return;
     }
 
-    // If examples are not in include section, add them to the exclude
+    // If default excluded packages are not in include section, add them to the exclude
     if (!this.stratosConfig) {
-      this.stratosConfig = {}
+      this.stratosConfig = {};
     }
     if (!this.stratosConfig.packages) {
-      this.stratosConfig.packages = {}
+      this.stratosConfig.packages = {};
     }
     if (!this.stratosConfig.packages.exclude) {
       this.stratosConfig.packages.exclude = [];
@@ -138,8 +154,22 @@ export class StratosConfig implements Logger {
 
   private addIfMissing<T = string>(array: T[], entry: T, dest: T[] = array) {
     if (array.indexOf(entry) < 0) {
-      dest.push(entry)
+      dest.push(entry);
     }
+  }
+
+  // Exclude any packages specified in the STRATOS_BUILD_REMOVE environment variable
+  private excludeFromEnvVar() {
+    const buildRemove = process.env.STRATOS_BUILD_REMOVE || '';
+    if (buildRemove.length === 0 ) {
+      return;
+    }
+
+    const exclude = buildRemove.split(',');
+    console.log(`Detected STRATOS_BUILD_REMOVE: ${buildRemove}`);
+
+    // Add the package to the list of excludes
+    exclude.forEach(e => this.addIfMissing(this.stratosConfig.packages.exclude, e.trim()));
   }
 
   public log(msg: any) {
@@ -169,6 +199,22 @@ export class StratosConfig implements Logger {
     });
 
     return assets;
+  }
+
+  public getBackendPlugins(): string[] {
+    const plugins = {};
+    this.packages.packages.forEach(pkg => {
+      pkg.backendPlugins.forEach(name => {
+        plugins[name] = true;
+      });
+    });
+
+    if (this.stratosConfig.backend) {
+      this.stratosConfig.backend.forEach(name => {
+        plugins[name] = true;
+      });
+    }
+    return Object.keys(plugins);
   }
 
   public getThemedPackages(): ThemingMetadata[] {

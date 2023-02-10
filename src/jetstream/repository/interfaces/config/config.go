@@ -53,6 +53,39 @@ func parseAPIKeysConfigValue(input string) (APIKeysConfigValue, error) {
 	return "", fmt.Errorf("Invalid value %q, allowed values: %q", input, allowedValues)
 }
 
+// UserEndpointsConfigValue - special type for configuring whether user endpoints feature is enabled
+type UserEndpointsConfigValue string
+
+// UserEndpointsConfigEnum - defines possible configuration values for Stratos user endpoints feature
+var UserEndpointsConfigEnum = struct {
+	Disabled  UserEndpointsConfigValue
+	AdminOnly UserEndpointsConfigValue
+	Enabled   UserEndpointsConfigValue
+}{
+	Disabled:  "disabled",
+	AdminOnly: "admin_only",
+	Enabled:   "enabled",
+}
+
+// verifies that given string is a valid config value
+func parseUserEndpointsConfigValue(input string) (UserEndpointsConfigValue, error) {
+	t := reflect.TypeOf(UserEndpointsConfigEnum)
+	v := reflect.ValueOf(UserEndpointsConfigEnum)
+
+	var allowedValues []string
+
+	for i := 0; i < t.NumField(); i++ {
+		allowedValue := string(v.Field(i).Interface().(UserEndpointsConfigValue))
+		if allowedValue == input {
+			return UserEndpointsConfigValue(input), nil
+		}
+
+		allowedValues = append(allowedValues, allowedValue)
+	}
+
+	return "", fmt.Errorf("Invalid value %q, allowed values: %q", input, allowedValues)
+}
+
 var urlType *url.URL
 
 // Load the given pointer to struct with values from the environment and the
@@ -103,14 +136,17 @@ func Load(intf interface{}, envLookup env.Lookup) error {
 	return nil
 }
 
-func setFieldValue(value reflect.Value, field reflect.Value, tag string, envLookup env.Lookup) error {
-	val, ok := envLookup(tag)
-
-	if !ok {
-		return nil
+func setFieldValue(value reflect.Value, field reflect.Value, tags string, envLookup env.Lookup) error {
+	// Allow multiple values, separated by ',' to allow fallbacks
+	tagList := strings.Split(tags, ",")
+	for _, tag := range tagList {
+		val, ok := envLookup(strings.TrimSpace(tag))
+		if ok {
+			return SetStructFieldValue(value, field, val)
+		}
 	}
 
-	return SetStructFieldValue(value, field, val)
+	return nil
 }
 
 func SetStructFieldValue(value reflect.Value, field reflect.Value, val string) error {
@@ -153,8 +189,11 @@ func SetStructFieldValue(value reflect.Value, field reflect.Value, val string) e
 		newVal = b
 	case reflect.String:
 		apiKeysConfigType := reflect.TypeOf((*APIKeysConfigValue)(nil)).Elem()
+		userEndpointsConfigType := reflect.TypeOf((*UserEndpointsConfigValue)(nil)).Elem()
 		if typ == apiKeysConfigType {
 			newVal, err = parseAPIKeysConfigValue(val)
+		} else if typ == userEndpointsConfigType {
+			newVal, err = parseUserEndpointsConfigValue(val)
 		} else {
 			newVal = val
 		}
@@ -243,7 +282,7 @@ func NewConfigFileLookup(path string) env.Lookup {
 		return env.NoopLookup
 	}
 
-	log.Infof("Loaded configuration from file: %s", path)
+	log.Debugf("Loaded configuration from file: %s", path)
 
 	return func(k string) (string, bool) {
 		v, ok := loadedConfig[k]

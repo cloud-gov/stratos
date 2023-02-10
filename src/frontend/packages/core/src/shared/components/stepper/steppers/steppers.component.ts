@@ -126,7 +126,7 @@ export class SteppersComponent implements OnInit, AfterContentInit, OnDestroy {
           console.warn('Stepper failed: ', err);
           return observableOf({
             success: false,
-            message: 'Failed',
+            message: err || 'Failed',
             redirectPayload: null,
             redirect: false,
             data: {},
@@ -146,7 +146,7 @@ export class SteppersComponent implements OnInit, AfterContentInit, OnDestroy {
               this.setActive(this.currentIndex + 1);
             }
           } else if (!success && message) {
-            this.snackBarRef = this.snackBar.open(message, 'Dismiss');
+            this.snackBarRef = this.snackBar.open(message, 'Dismiss', { panelClass: 'stepper-snack-bar' });
           }
           return [];
         })).subscribe();

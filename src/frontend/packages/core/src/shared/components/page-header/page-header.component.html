@@ -55,7 +55,7 @@
                   notifications
                 </mat-icon>
               </button>
-              <button id="userMenu" *ngIf="!hideMenu" class="page-header__menu-button page-header__usermenu"
+            <button id="userMenu" *ngIf="!hideMenu && !environment.hideUserMenu" class="page-header__menu-button page-header__usermenu"
                 mat-icon-button [matMenuTriggerFor]="menu">
                 <app-user-avatar color="header" [allowGravatar]="allowGravatar$ | async" [user]="user$ | async">
                 </app-user-avatar>
@@ -78,9 +78,9 @@
                     <button mat-menu-item routerLink="/api-keys" *ngIf="canAPIKeys$ | async">
                       <span>API Keys</span>
                     </button>
-                    <div class="page-header__menu-separator"></div>
+                    <div class="page-header__menu-separator" *ngIf="canLogout$ | async"></div>
                   </div>
-                  <button mat-menu-item (click)="logout()">
+                  <button mat-menu-item (click)="logout()" *ngIf="canLogout$ | async">
                     <span>Logout</span>
                   </button>
                 </div>

@@ -1,19 +1,18 @@
 import { Component, ContentChild, ContentChildren, Input, OnDestroy, QueryList } from '@angular/core';
-import { combineLatest, Observable, of as observableOf, Subscription } from 'rxjs';
+import { combineLatest, Observable, of as observableOf, of, Subscription } from 'rxjs';
 import { first, map, tap } from 'rxjs/operators';
 
-import { FavoritesConfigMapper } from '../../../../../../../../store/src/favorite-config-mapper';
 import { EntityMonitorFactory } from '../../../../../../../../store/src/monitors/entity-monitor.factory.service';
 import { MenuItem } from '../../../../../../../../store/src/types/menu-item.types';
 import { ComponentEntityMonitorConfig, StratosStatus } from '../../../../../../../../store/src/types/shared.types';
 import { IFavoriteMetadata, UserFavorite } from '../../../../../../../../store/src/types/user-favorites.types';
-import { getFavoriteFromEntity } from '../../../../../../../../store/src/user-favorite-helpers';
+import { UserFavoriteManager } from '../../../../../../../../store/src/user-favorite-manager';
 import { safeUnsubscribe } from '../../../../../../core/utils.service';
 import { MetaCardItemComponent } from '../meta-card-item/meta-card-item.component';
 import { MetaCardTitleComponent } from '../meta-card-title/meta-card-title.component';
 
 
-export function createMetaCardMenuItemSeparator() {
+export function createMetaCardMenuItemSeparator(): MenuItem {
   return {
     label: '-',
     separator: true,
@@ -56,6 +55,9 @@ export class MetaCardComponent implements OnDestroy {
   statusBackground = false;
 
   @Input()
+  mode: string;
+
+  @Input()
   clickAction: () => void = null;
 
   @Input()
@@ -69,10 +71,9 @@ export class MetaCardComponent implements OnDestroy {
       if (!this.favorite) {
         this.entityMonitorSub = entityMonitor.entity$.pipe(
           first(),
-          tap(entity => this.favorite = getFavoriteFromEntity(
+          tap(entity => this.favorite = this.userFavoriteManager.getFavorite(
             entity,
             entityConfig.schema.entityType,
-            this.favoritesConfigMapper,
             entityConfig.schema.endpointType
           ))
         ).subscribe();
@@ -86,7 +87,7 @@ export class MetaCardComponent implements OnDestroy {
       this.pActionMenu = actionMenu.map(menuItem => {
         if (!menuItem.can) {
           menuItem.separator = menuItem.label === '-';
-          menuItem.can = observableOf(!menuItem.separator);
+          menuItem.can = of(true);
         }
         if (!menuItem.disabled) {
           menuItem.disabled = observableOf(false);
@@ -94,7 +95,10 @@ export class MetaCardComponent implements OnDestroy {
         return menuItem;
       });
 
-      this.showMenu$ = combineLatest(actionMenu.map(menuItem => menuItem.can)).pipe(
+      const nonSeparators = actionMenu
+        .filter(menuItem => !menuItem.separator)
+        .map(menuItem => menuItem.can);
+      this.showMenu$ = combineLatest(nonSeparators).pipe(
         map(cans => cans.some(can => can))
       );
     }
@@ -111,7 +115,7 @@ export class MetaCardComponent implements OnDestroy {
 
   constructor(
     private entityMonitorFactory: EntityMonitorFactory,
-    private favoritesConfigMapper: FavoritesConfigMapper,
+    private userFavoriteManager: UserFavoriteManager,
   ) { }
 
   ngOnDestroy() {
