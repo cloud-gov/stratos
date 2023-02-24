@@ -108,7 +108,7 @@
     "@angular-devkit/build-ng-packagr": "~0.1002.0",
     "@angular-devkit/core": "^10.2.0",
     "@angular-devkit/schematics": "^10.2.0",
-    "@angular/cli": "^10.2.0",
+    "@angular/cli": "^15.2.0",
     "@angular/compiler-cli": "^10.2.0",
     "@angular/language-service": "^10.2.0",
     "@schematics/angular": "^9.1.5",
