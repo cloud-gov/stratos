@@ -10,7 +10,8 @@ import {
   ViewChild,
   ViewContainerRef,
 } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
+import { entityCatalog, EndpointAuthTypeConfig, IAuthForm, IEndpointAuthComponent } from '@stratosui/store';
 import { Subscription } from 'rxjs';
 
 import { entityCatalog } from '../../../../../store/src/entity-catalog/entity-catalog';
@@ -57,7 +58,7 @@ export class ConnectEndpointComponent implements OnInit, OnDestroy {
   @ViewChild('authForm', { read: ViewContainerRef, static: true })
   public container: ViewContainerRef;
 
-  public endpointForm: FormGroup;
+  public endpointForm: UntypedFormGroup;
 
   private bodyContent = '';
 
@@ -72,7 +73,7 @@ export class ConnectEndpointComponent implements OnInit, OnDestroy {
   private subs: Subscription[] = [];
 
   constructor(
-    private fb: FormBuilder,
+    private fb: UntypedFormBuilder,
     private resolver: ComponentFactoryResolver,
   ) { }
 
