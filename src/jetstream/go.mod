@@ -19,7 +19,7 @@ require (
 	github.com/bmizerany/pat v0.0.0-20170815010413-6226ea591a40 // indirect
 	github.com/cf-stratos/mysqlstore v0.0.0-20170822100912-304308519d13
 	github.com/charlievieth/fs v0.0.0-20170613215519-7dc373669fa1 // indirect
-	github.com/cloudfoundry-community/go-cfenv v1.17.0
+	github.com/cloud-gov/go-cfenv v1.17.0
 	github.com/cloudfoundry-incubator/stratos/src/jetstream/plugins/kubernetes v0.0.0-00010101000000-000000000000
 	github.com/cloudfoundry-incubator/stratos/src/jetstream/plugins/monocular v0.0.0-00010101000000-000000000000
 	github.com/cloudfoundry/bosh-cli v5.4.0+incompatible // indirect

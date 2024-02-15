@@ -83,8 +83,8 @@ github.com/chai2010/gettext-go v0.0.0-20160711120539-c6fed771bfd5/go.mod h1:/iP1
 github.com/chai2010/gettext-go v0.0.0-20170215093142-bf70f2a70fb1 h1:HD4PLRzjuCVW79mQ0/pdsalOLHJ+FaEoqJLxfltpb2U=
 github.com/chai2010/gettext-go v0.0.0-20170215093142-bf70f2a70fb1/go.mod h1:/iP1qXHoty45bqomnu2LM+VVyAEdWN+vtSHGlQgyxbw=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
-github.com/cloudfoundry-community/go-cfenv v1.17.0 h1:qfxEfn8qKkaHY3ZEk/Y2noY79HBASvNgmtHK9x4+6GY=
-github.com/cloudfoundry-community/go-cfenv v1.17.0/go.mod h1:2UgWvQTRXUuIZ/x3KnW6fk6CgPBhcV4UQb/UGIrUyyI=
+github.com/cloud-gov/go-cfenv v1.17.0 h1:qfxEfn8qKkaHY3ZEk/Y2noY79HBASvNgmtHK9x4+6GY=
+github.com/cloud-gov/go-cfenv v1.17.0/go.mod h1:2UgWvQTRXUuIZ/x3KnW6fk6CgPBhcV4UQb/UGIrUyyI=
 github.com/cloudfoundry-incubator/stratos v2.0.0-beta-001+incompatible h1:UUxNbLjhv2cfymub5yNN1tjjqYkteHBBagb4jcbXEIQ=
 github.com/cloudfoundry-incubator/stratos/src/jetstream v0.0.0-20190516104506-727fa3589a90 h1:IeIyBIgh2xEQm1CxHN2yFSBU7Ap+HQZleOs3TlAymI0=
 github.com/containerd/containerd v1.3.0-beta.2.0.20190823190603-4a2f61c4f2b4 h1:aMyA5J7j6D07U7pf8BFEY67BKoDcz0zWleAbQj3zVng=
