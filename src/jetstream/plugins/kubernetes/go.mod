@@ -4,14 +4,15 @@ go 1.12
 
 require (
 	github.com/SermoDigital/jose v0.9.1
-	github.com/aws/aws-sdk-go v1.34.0
+	github.com/aws/aws-sdk-go v1.54.1
 	github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces v0.0.0-20191015083202-4c24d26ae1ec
 	github.com/docker/docker v1.13.1 // indirect
 	github.com/elazarl/goproxy v0.0.0-20191011121108-aa519ddbe484 // indirect
-	github.com/gorilla/websocket v1.4.0
+	github.com/gorilla/websocket v1.4.1
 	github.com/gregjones/httpcache v0.0.0-20190212212710-3befbb6ad0cc // indirect
 	github.com/kubernetes-sigs/aws-iam-authenticator v0.3.0
-	github.com/labstack/echo/v4 v4.11.4
+	github.com/labstack/echo/v4 v4.12.0
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/russross/blackfriday v2.0.0+incompatible // indirect
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.4.2
