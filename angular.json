@@ -69,10 +69,12 @@
               "extractLicenses": true,
               "vendorChunk": false,
               "buildOptimizer": true,
-              "fileReplacements": [{
-                "replace": "src/frontend/packages/core/src/environments/environment.ts",
-                "with": "src/frontend/packages/core/src/environments/environment.prod.ts"
-              }]
+              "fileReplacements": [
+                {
+                  "replace": "src/frontend/packages/core/src/environments/environment.ts",
+                  "with": "src/frontend/packages/core/src/environments/environment.prod.ts"
+                }
+              ]
             },
             "desktop": {
               "optimization": false,
@@ -84,12 +86,13 @@
               "extractLicenses": true,
               "vendorChunk": false,
               "buildOptimizer": false,
-              "fileReplacements": [{
-                "replace": "src/frontend/packages/core/src/environments/environment.ts",
-                "with": "src/frontend/packages/core/src/environments/environment.desktop.ts"
-              }]
+              "fileReplacements": [
+                {
+                  "replace": "src/frontend/packages/core/src/environments/environment.ts",
+                  "with": "src/frontend/packages/core/src/environments/environment.desktop.ts"
+                }
+              ]
             }
-
           }
         },
         "serve": {
@@ -168,14 +171,18 @@
           },
           "configurations": {
             "production": {
-              "budgets": [{
-                "type": "anyComponentStyle",
-                "maximumWarning": "6kb"
-              }],
-              "fileReplacements": [{
-                "replace": "src/frontend/packages/core/src/environments/environment.ts",
-                "with": "src/frontend/packages/core/src/environments/environment.prod.ts"
-              }],
+              "budgets": [
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "6kb"
+                }
+              ],
+              "fileReplacements": [
+                {
+                  "replace": "src/frontend/packages/core/src/environments/environment.ts",
+                  "with": "src/frontend/packages/core/src/environments/environment.prod.ts"
+                }
+              ],
               "optimization": true,
               "outputHashing": "all",
               "sourceMap": false,
@@ -293,9 +300,13 @@
         "lint": {
           "builder": "@angular-devkit/build-angular:tslint",
           "options": {
-            "tsConfig": ["src/tsconfig.json"],
+            "tsConfig": [
+              "src/tsconfig.json"
+            ],
             "tslintConfig": "src/frontend/packages/shared/tslint.json",
-            "files": ["src/frontend/packages/shared/src/**/*.ts"]
+            "files": [
+              "src/frontend/packages/shared/src/**/*.ts"
+            ]
           }
         }
       }
@@ -380,34 +391,6 @@
         }
       }
     },
-    "kubernetes": {
-      "root": "src/frontend/packages/kubernetes",
-      "sourceRoot": "src/frontend/packages/kubernetes/src",
-      "projectType": "library",
-      "prefix": "lib",
-      "architect": {
-        "test": {
-          "builder": "@angular-devkit/build-angular:karma",
-          "options": {
-            "main": "src/frontend/packages/kubernetes/src/test.ts",
-            "tsConfig": "src/frontend/packages/kubernetes/tsconfig.spec.json",
-            "karmaConfig": "src/frontend/packages/kubernetes/karma.conf.js"
-          }
-        },
-        "lint": {
-          "builder": "@angular-devkit/build-angular:tslint",
-          "options": {
-            "tsConfig": [
-              "src/tsconfig.json"
-            ],
-            "tslintConfig": "src/frontend/packages/kubernetes/tslint.json",
-            "files": [
-              "src/frontend/packages/kubernetes/src/**/*.ts"
-            ]
-          }
-        }
-      }
-    },
     "git": {
       "root": "src/frontend/packages/git",
       "sourceRoot": "src/frontend/packages/git/src",
@@ -436,7 +419,6 @@
         }
       }
     }
-
   },
   "defaultProject": "stratos",
   "schematics": {
