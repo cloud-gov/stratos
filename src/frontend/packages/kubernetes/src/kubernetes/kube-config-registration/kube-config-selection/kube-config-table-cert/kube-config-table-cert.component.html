@@ -1,7 +1,0 @@
-@if (!(initialValue$ | async)) {
-  <app-progress-spinner diameter="20" mode="indeterminate">
-  </app-progress-spinner>
-} @else {
-  <app-checkbox [checked]="(initialValue$ | async).checked" (change)="valueChanged($event.checked)" color="primary">
-  </app-checkbox>
-}

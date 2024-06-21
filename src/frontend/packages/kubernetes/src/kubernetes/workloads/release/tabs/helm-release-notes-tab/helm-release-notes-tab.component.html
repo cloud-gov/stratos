@@ -1,7 +1,0 @@
-@if (notes$ | async; as notes) {
-  <div class="helm-release-notes">
-    <div [innerHtml]="notes"></div>
-  </div>
-} @else {
-  <app-no-content-message [icon]="'subject'" [firstLine]="'There are no release notes'"></app-no-content-message>
-}
