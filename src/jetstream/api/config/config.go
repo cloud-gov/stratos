@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/govau/cf-common/env"
+	"github.com/cloud-gov/cf-common/env"
 	log "github.com/sirupsen/logrus"
 )
 

@@ -14,7 +14,9 @@ import (
 	"github.com/samber/lo"
 
 	goosedbversion "github.com/cloudfoundry/stratos/src/jetstream/repository/goose-db-version"
-	"github.com/govau/cf-common/env"
+
+	"github.com/cloud-gov/cf-common/env"
+
 	log "github.com/sirupsen/logrus"
 
 	// Mysql driver

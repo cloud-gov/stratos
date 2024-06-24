@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/govau/cf-common/env"
+	"github.com/cloud-gov/cf-common/env"
 
 	"github.com/cloudfoundry/stratos/src/jetstream/api"
 	"github.com/cloudfoundry/stratos/src/jetstream/datastore"
