@@ -64,7 +64,7 @@ require (
 	github.com/swaggo/echo-swagger v1.0.0
 	github.com/swaggo/swag v1.6.7
 	github.com/tedsuo/rata v1.0.0 // indirect
-	github.com/ulikunitz/xz v0.5.6 // indirect
+	github.com/ulikunitz/xz v0.5.8 // indirect
 	github.com/vito/go-interact v0.0.0-20171111012221-fa338ed9e9ec // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	golang.org/x/crypto v0.24.0
