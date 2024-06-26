@@ -97,7 +97,8 @@
     "zone.js": "~0.10.2",
     "lodash": "^4.17.20",
     "@babel/traverse": "^7.23.2",
-    "underscore": ">=1.12.1"
+    "underscore": ">=1.12.1",
+    "loader-utils": "^2.0.3"
   },
   "engines": {
     "node": "12.13.0"
