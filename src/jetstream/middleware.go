@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/context"
-	"github.com/cloud-gov/cf-common/env"
+	"github.com/cloud-gov/cf-common/v2/env"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 

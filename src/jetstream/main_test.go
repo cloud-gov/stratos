@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/cloud-gov/cf-common/env"
+	"github.com/cloud-gov/cf-common/v2/env"
 
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/datastore"
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"

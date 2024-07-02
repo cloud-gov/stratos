@@ -8,7 +8,7 @@ import (
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/apikeys"
 	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 	"github.com/gorilla/sessions"
-	"github.com/cloud-gov/cf-common/env"
+	"github.com/cloud-gov/cf-common/v2/env"
 	"github.com/labstack/echo/v4"
 )
 
