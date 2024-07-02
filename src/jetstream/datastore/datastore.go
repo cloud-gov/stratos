@@ -10,7 +10,7 @@ import (
 	"time"
 
 	goosedbversion "github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/goose-db-version"
-	"github.com/cloud-gov/cf-common/env"
+	"github.com/cloud-gov/cf-common/v2/env"
 	log "github.com/sirupsen/logrus"
 
 	// Mysql driver

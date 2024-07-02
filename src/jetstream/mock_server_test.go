@@ -16,7 +16,7 @@ import (
 
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
-	"github.com/cloud-gov/cf-common/env"
+	"github.com/cloud-gov/cf-common/v2/env"
 	"github.com/labstack/echo/v4"
 	sqlmock "gopkg.in/DATA-DOG/go-sqlmock.v1"
 

@@ -32,7 +32,7 @@ import (
 	"github.com/cf-stratos/mysqlstore"
 	"github.com/cloud-gov/go-cfenv"
 	"github.com/gorilla/sessions"
-	"github.com/cloud-gov/cf-common/env"
+	"github.com/cloud-gov/cf-common/v2/env"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/nwmac/sqlitestore"
