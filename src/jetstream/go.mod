@@ -29,8 +29,8 @@ require (
 	github.com/cppforlife/go-patch v0.2.0 // indirect
 	github.com/domodwyer/mailyak v3.1.1+incompatible
 	github.com/dsnet/compress v0.0.2-0.20210315054119-f66993602bf5 // indirect
-	github.com/elazarl/goproxy v0.0.0-20200315184450-1f3cb6622dad // indirect
-	github.com/elazarl/goproxy/ext v0.0.0-20200315184450-1f3cb6622dad // indirect
+	github.com/elazarl/goproxy v0.0.0-20240618083138-03be62527ccb // indirect
+	github.com/elazarl/goproxy/ext v0.0.0-20240618083138-03be62527ccb // indirect
 	github.com/fatih/color v1.7.0 // indirect
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang/mock v1.4.4
