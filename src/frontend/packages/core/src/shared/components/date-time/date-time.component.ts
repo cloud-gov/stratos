@@ -3,6 +3,8 @@ import { UntypedFormControl } from '@angular/forms';
 import { combineLatest, Observable, Subscription } from 'rxjs';
 import { debounceTime, filter, map, shareReplay, tap } from 'rxjs/operators';
 
+import moment from 'moment';
+
 @Component({
   selector: 'app-date-time',
   templateUrl: './date-time.component.html',
