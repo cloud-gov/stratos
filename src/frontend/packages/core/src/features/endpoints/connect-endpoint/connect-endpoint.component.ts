@@ -86,7 +86,6 @@ export class ConnectEndpointComponent implements OnInit, OnDestroy {
       this.authTypesForEndpoint = endpoint.definition.authTypes.filter(authType => authType.value !== BaseEndpointAuth.SSO.value);
     }
 
-
     // Not all endpoint types might allow token sharing - typically types like metrics do
     this.canShareEndpointToken = endpoint.definition.tokenSharing;
 

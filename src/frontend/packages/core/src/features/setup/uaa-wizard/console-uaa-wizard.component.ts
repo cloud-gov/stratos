@@ -1,14 +1,17 @@
 import { Component, Inject, OnInit, ViewEncapsulation } from '@angular/core';
 import { UntypedFormControl, UntypedFormGroup, Validators } from '@angular/forms';
 import { Store } from '@ngrx/store';
+import {
+  VerifySession,
+  SetupConsoleGetScopes,
+  SetupSaveConfig,
+  AuthState,
+  UAASetupState,
+  InternalAppState,
+} from '@stratosui/store';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { delay, filter, map, skipWhile, take } from 'rxjs/operators';
 
-import { VerifySession } from '../../../../../store/src/actions/auth.actions';
-import { SetupConsoleGetScopes, SetupSaveConfig } from '../../../../../store/src/actions/setup.actions';
-import { InternalAppState } from '../../../../../store/src/app-state';
-import { AuthState } from '../../../../../store/src/reducers/auth.reducer';
-import { UAASetupState } from '../../../../../store/src/types/uaa-setup.types';
 import { APP_TITLE } from '../../../core/core.types';
 import { StepOnNextFunction } from '../../../shared/components/stepper/step/step.component';
 import { getSSOClientRedirectURI } from '../../endpoints/endpoint-helpers';
@@ -43,7 +46,7 @@ export class ConsoleUaaWizardComponent implements OnInit {
       uaa_endpoint: this.uaaForm.get('apiUrl').value,
       console_client: this.uaaForm.get('clientId').value,
       password: this.uaaForm.get('adminPassword').value,
-      skip_ssl_validation: this.uaaForm.get('skipSll').value,
+      skip_ssl_validation: this.uaaForm.get('skipSSL').value,
       username: this.uaaForm.get('adminUsername').value,
       console_client_secret: this.uaaForm.get('clientSecret').value,
       use_sso: this.uaaForm.get('useSSO').value,
@@ -75,7 +78,7 @@ export class ConsoleUaaWizardComponent implements OnInit {
       uaa_endpoint: this.uaaForm.get('apiUrl').value,
       console_client: this.uaaForm.get('clientId').value,
       password: this.uaaForm.get('adminPassword').value,
-      skip_ssl_validation: this.uaaForm.get('skipSll').value,
+      skip_ssl_validation: this.uaaForm.get('skipSSL').value,
       username: this.uaaForm.get('adminUsername').value,
       console_client_secret: this.uaaForm.get('clientSecret').value,
       use_sso: this.uaaForm.get('useSSO').value,
@@ -114,7 +117,7 @@ export class ConsoleUaaWizardComponent implements OnInit {
   ngOnInit() {
     this.uaaForm = new UntypedFormGroup({
       apiUrl: new UntypedFormControl('', [Validators.required as any]),
-      skipSll: new UntypedFormControl(false),
+      skipSSL: new UntypedFormControl(false),
       clientId: new UntypedFormControl('', [Validators.required as any]),
       clientSecret: new UntypedFormControl(''),
       adminUsername: new UntypedFormControl('', [Validators.required as any]),

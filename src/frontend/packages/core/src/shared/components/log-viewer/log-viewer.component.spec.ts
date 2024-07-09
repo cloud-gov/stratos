@@ -63,7 +63,7 @@ describe('LogViewerComponent', () => {
       expect(contentEl.children.length).toEqual(1);
       expect(contentEl.children[0].children[0].innerHTML).toEqual(logText);
       done();
-    });
+    }, 50);
   });
 
   it('should only allow max rows', (done) => {
