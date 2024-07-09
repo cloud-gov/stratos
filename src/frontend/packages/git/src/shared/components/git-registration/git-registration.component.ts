@@ -1,5 +1,5 @@
 import { Component, OnDestroy } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import {
   CreateEndpointHelperComponent,
@@ -61,7 +61,7 @@ export class GitRegistrationComponent extends CreateEndpointHelperComponent impl
 
   public epSubType: GIT_ENDPOINT_SUB_TYPES;
 
-  registerForm: FormGroup;
+  registerForm: UntypedFormGroup;
 
   private sub: Subscription;
 
@@ -74,7 +74,7 @@ export class GitRegistrationComponent extends CreateEndpointHelperComponent impl
   constructor(
     gitSCMService: GitSCMService,
     activatedRoute: ActivatedRoute,
-    private fb: FormBuilder,
+    private fb: UntypedFormBuilder,
     private snackBarService: SnackBarService,
     private endpointsService: EndpointsService,
     public sessionService: SessionService,
