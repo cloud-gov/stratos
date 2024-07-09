@@ -1,0 +1,57 @@
+import { NgModule } from '@angular/core';
+import { RouterModule, Routes } from '@angular/router';
+
+import { HELM_ENDPOINT_TYPE } from './helm/helm-entity-factory';
+import { KUBERNETES_ENDPOINT_TYPE } from './kubernetes/kubernetes-entity-factory';
+
+const customRoutes: Routes = [
+  {
+    path: 'workloads',
+    loadChildren: () => import('./kubernetes/workloads/workloads.routes').then(m => m.WORKLOADS_ROUTES),
+    data: {
+      reuseRoute: true,
+      stratosNavigation: {
+        text: 'Workloads',
+        matIcon: 'workloads',
+        matIconFont: 'stratos-icons',
+        position: 60,
+        requiresEndpointType: KUBERNETES_ENDPOINT_TYPE
+      }
+    }
+  },
+  {
+    path: 'kubernetes',
+    loadChildren: () => import('./kubernetes/kubernetes.routes').then(m => m.KUBERNETES_ROUTES),
+    data: {
+      stratosNavigation: {
+        text: 'Kubernetes',
+        matIcon: 'kubernetes',
+        matIconFont: 'stratos-icons', // TODO: get these from entity config?
+        position: 64,
+        requiresEndpointType: KUBERNETES_ENDPOINT_TYPE
+      }
+    }
+  },
+  {
+    path: 'monocular',
+    loadChildren: () => import('./helm/helm.routes').then(m => m.HELM_ROUTES),
+    data: {
+      reuseRoute: true,
+      stratosNavigation: {
+        text: 'Helm',
+        matIcon: 'helm',
+        matIconFont: 'stratos-icons',
+        position: 65,
+        requiresEndpointType: HELM_ENDPOINT_TYPE
+      }
+    }
+  },
+];
+
+@NgModule({
+  imports: [
+    RouterModule.forChild(customRoutes),
+  ],
+  declarations: []
+})
+export class KubePackageModuleRoutingModule { }

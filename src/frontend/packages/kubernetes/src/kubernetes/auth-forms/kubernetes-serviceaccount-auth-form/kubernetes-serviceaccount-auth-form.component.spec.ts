@@ -1,0 +1,43 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
+import { UntypedFormBuilder } from '@angular/forms';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+
+import { MDAppModule, SharedModule } from '../../../../../core/src/public-api';
+import { KubernetesSATokenAuthFormComponent } from './kubernetes-serviceaccount-auth-form.component';
+
+describe('KubernetesSATokenAuthFormComponent', () => {
+  let component: KubernetesSATokenAuthFormComponent;
+  let fixture: ComponentFixture<KubernetesSATokenAuthFormComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [
+        MDAppModule,
+        SharedModule,
+        NoopAnimationsModule,
+
+        KubernetesSATokenAuthFormComponent,
+      ],
+      providers: [provideZonelessChangeDetection()]
+    }).compileComponents();
+  });
+
+  beforeEach(() => {
+    fixture = TestBed.createComponent(KubernetesSATokenAuthFormComponent);
+    component = fixture.componentInstance;
+    const fb = new UntypedFormBuilder();
+    const form = fb.group({
+      authValues: fb.group({
+        token: '',
+      }),
+    });
+    component.formGroup = form;
+    fixture.detectChanges();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+});

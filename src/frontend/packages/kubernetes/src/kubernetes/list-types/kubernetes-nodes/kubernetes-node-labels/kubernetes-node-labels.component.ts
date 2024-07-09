@@ -1,0 +1,31 @@
+import { ChangeDetectionStrategy, Component, OnInit} from '@angular/core';
+import { CustomTooltipDirective } from '@stratosui/core';
+
+import { TableCellCustom } from '../../../../../../core/src/shared/components/list/list.types';
+import { KubernetesNode } from '../../../store/kube.types';
+
+@Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'app-kubernetes-node-labels',
+  templateUrl: './kubernetes-node-labels.component.html',
+  styleUrls: ['./kubernetes-node-labels.component.scss'],
+  standalone: true,
+  imports: [
+    CustomTooltipDirective,
+  ]
+})
+export class KubernetesNodeLabelsComponent extends TableCellCustom<KubernetesNode> implements OnInit {
+
+  labels: string;
+
+  constructor() {
+    super();
+  }
+
+  ngOnInit() {
+    this.labels = Object.entries(this.row.metadata.labels)
+      .map(([key, value]) => `${key}:${value}`)
+      .join(', ');
+  }
+
+}

@@ -1,0 +1,28 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
+
+import { EntityServiceFactory } from '../../../../../../store/src/entity-service-factory.service';
+import { KubernetesNodeSimpleMetricComponent } from './kubernetes-node-simple-metric.component';
+
+describe('KubernetesNodeSimpleMetricComponent', () => {
+  let component: KubernetesNodeSimpleMetricComponent;
+  let fixture: ComponentFixture<KubernetesNodeSimpleMetricComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      providers: [EntityServiceFactory, provideZonelessChangeDetection()],
+      imports: [ KubernetesNodeSimpleMetricComponent ]
+    }).compileComponents();
+  });
+
+  beforeEach(() => {
+    fixture = TestBed.createComponent(KubernetesNodeSimpleMetricComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+});

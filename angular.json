@@ -18,9 +18,7 @@
                 "script": "sh -c 'mv build/clean-symlinks.js build/clean-symlinks.cjs && node build/clean-symlinks.cjs && mv build/clean-symlinks.cjs build/clean-symlinks.js'",
                 "phase": 1,
                 "cache": true,
-                "cacheKey": [
-                  "src/frontend/packages/**/package.json"
-                ],
+                "cacheKey": ["src/frontend/packages/**/package.json"],
                 "timeout": 30000,
                 "required": true
               },
@@ -29,10 +27,7 @@
                 "script": "sh -c 'mv build/store-git-metadata.js build/store-git-metadata.cjs && node build/store-git-metadata.cjs && mv build/store-git-metadata.cjs build/store-git-metadata.js'",
                 "phase": 1,
                 "cache": true,
-                "cacheKey": [
-                  ".git/HEAD",
-                  ".git/refs/heads/**"
-                ],
+                "cacheKey": [".git/HEAD", ".git/refs/heads/**"],
                 "timeout": 30000,
                 "required": true
               },
@@ -41,10 +36,7 @@
                 "script": "node build/extension-generator.mjs",
                 "phase": 2,
                 "cache": true,
-                "cacheKey": [
-                  "custom-src/**/*",
-                  "src/frontend/packages/core/custom-extensions.json"
-                ],
+                "cacheKey": ["custom-src/**/*", "src/frontend/packages/core/custom-extensions.json"],
                 "timeout": 60000,
                 "required": true
               },
@@ -53,10 +45,7 @@
                 "script": "node dist-devkit/src/backend.js",
                 "phase": 2,
                 "cache": true,
-                "cacheKey": [
-                  "dist-devkit/src/backend.js",
-                  "src/jetstream/**/*.go"
-                ],
+                "cacheKey": ["dist-devkit/src/backend.js", "src/jetstream/**/*.go"],
                 "timeout": 60000,
                 "required": false
               }
@@ -104,9 +93,7 @@
                 "glob": "**/*",
                 "input": "custom-src/frontend/assets/custom",
                 "output": "/core/assets/custom",
-                "ignore": [
-                  "**/.gitkeep"
-                ]
+                "ignore": ["**/.gitkeep"]
               },
               {
                 "glob": "**/*",
@@ -365,6 +352,13 @@
           }
         }
       }
+    },
+    "kubernetes": {
+      "root": "src/frontend/packages/kubernetes",
+      "sourceRoot": "src/frontend/packages/kubernetes/src",
+      "projectType": "library",
+      "prefix": "lib",
+      "architect": {}
     },
     "git": {
       "root": "src/frontend/packages/git",

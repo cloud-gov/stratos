@@ -1,0 +1,7 @@
+<app-page-header>
+  <h1>Kubernetes</h1>
+</app-page-header>
+@if ((connectedEndpoints$ | async) > 1) {
+  <app-list>
+  </app-list>
+}

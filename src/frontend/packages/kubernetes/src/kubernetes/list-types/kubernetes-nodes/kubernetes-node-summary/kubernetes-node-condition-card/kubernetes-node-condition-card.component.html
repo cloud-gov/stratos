@@ -1,0 +1,23 @@
+<div class="kubernetes-node-condition-card">
+  <app-card>
+    <app-card-header>
+      <app-card-title>Condition</app-card-title>
+    </app-card-header>
+    <app-card-content>
+      <div class="kubernetes-node-summary-card__content">
+        <app-kubernetes-node-condition condition="Ready"></app-kubernetes-node-condition>
+        <app-kubernetes-node-condition [inverse]="true" [subtle]="true" condition="MemoryPressure">
+        </app-kubernetes-node-condition>
+        <app-kubernetes-node-condition [inverse]="true" [subtle]="true" condition="DiskPressure">
+        </app-kubernetes-node-condition>
+        <app-kubernetes-node-condition [inverse]="true" [subtle]="true" condition="OutOfDisk">
+        </app-kubernetes-node-condition>
+        <app-kubernetes-node-condition [inverse]="true" [subtle]="true" condition="PIDPressure">
+        </app-kubernetes-node-condition>
+        <app-kubernetes-node-condition [inverse]="true" [subtle]="true" condition="NetworkUnavailable">
+        </app-kubernetes-node-condition>
+      </div>
+    </app-card-content>
+  </app-card>
+
+</div>

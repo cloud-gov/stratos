@@ -1,0 +1,24 @@
+@use '../../theme.scss';
+
+.panel {
+  padding: 2em;
+
+  &--container {
+    width: 80%;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  &--background {
+    background-color: var(--color-layout-light);
+  }
+
+  &--border {
+    border-radius: var(--border-radius);
+    border: 1px solid #e1e5e9; // slightly darker than layout-light
+  }
+
+  &__title {
+    margin-top: 0;
+  }
+}

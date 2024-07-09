@@ -1,0 +1,10 @@
+<div>
+  @if (loading) {
+    <div class="loader">
+      <app-spinner></app-spinner>
+    </div>
+  }
+  @if (!loading) {
+    <ng-content></ng-content>
+  }
+</div>
