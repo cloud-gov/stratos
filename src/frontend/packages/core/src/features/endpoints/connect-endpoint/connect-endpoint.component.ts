@@ -14,8 +14,6 @@ import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms
 import { entityCatalog, EndpointAuthTypeConfig, IAuthForm, IEndpointAuthComponent } from '@stratosui/store';
 import { Subscription } from 'rxjs';
 
-import { entityCatalog } from '../../../../../store/src/entity-catalog/entity-catalog';
-import { EndpointAuthTypeConfig, IAuthForm, IEndpointAuthComponent } from '../../../../../store/src/extension-types';
 import { BaseEndpointAuth } from '../../../core/endpoint-auth';
 import { safeUnsubscribe } from '../../../core/utils.service';
 import { ConnectEndpointConfig, ConnectEndpointData, ConnectEndpointService } from '../connect.service';
