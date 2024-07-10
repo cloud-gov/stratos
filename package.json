@@ -82,7 +82,7 @@
     "@angular/platform-browser-dynamic": "^18.0.6",
     "@angular/platform-server": "^18.0.6",
     "@angular/router": "^18.0.6",
-    "@cfstratos/monaco-yaml": "^2.5.0",
+    "monaco-yaml": "^5.2.1",
     "@ngrx/effects": "^18.0.1",
     "@ngrx/router-store": "^18.0.1",
     "@ngrx/store": "^18.0.1",
