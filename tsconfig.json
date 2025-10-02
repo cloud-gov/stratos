@@ -4,8 +4,5 @@
     "module": "esnext",
     "rootDir": ".",
     "target": "es2020"
-  },
-  "exclude": [
-    "node_modules"
-  ]
+  }
 }

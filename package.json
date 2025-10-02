@@ -52,7 +52,7 @@
     "ngx-monaco-editor": {
       "@angular/core": "14.3.0",
       "@angular/common": "14.3.0",
-      "tslib": "2.8.1"
+      "tslib": "2.6.2"
     },
     "jasmine-protractor-browser-log-reporter": {
       "jasmine-core": "3.8.0",
@@ -73,8 +73,8 @@
     "request": "npm:@cypress/request@^3.0.0"
   },
   "dependencies": {
-    "@ajsf/core": "^0.8.0",
-    "@ajsf/material": "^0.8.0",
+    "@ajsf/core": "^0.7.0",
+    "@ajsf/material": "^0.7.0",
     "@angular/animations": "^14.3.0",
     "@angular/cdk": "^14.2.7",
     "@angular/common": "^14.3.0",
@@ -110,9 +110,9 @@
     "ngx-monaco-editor": "^9.0.0",
     "normalizr": "^3.6.0",
     "reselect": "^4.0.0",
-    "rxjs": "^7.0.0",
-    "rxjs-spy": "^8.0.2",
-    "rxjs-websockets": "~9.0.0",
+    "rxjs": "^6.6.3",
+    "rxjs-spy": "^7.5.2",
+    "rxjs-websockets": "~8.0.1",
     "ts-md5": "^1.2.7",
     "tslib": "^2.0.0",
     "xterm": "^4.5.0",
