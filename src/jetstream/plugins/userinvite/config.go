@@ -7,7 +7,7 @@ import (
 	"path"
 	text "text/template"
 
-	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces/config"
+	"github.com/cloudfoundry/stratos/src/jetstream/api/config"
 
 	"github.com/cloud-gov/cf-common/v2/env"
 	log "github.com/sirupsen/logrus"

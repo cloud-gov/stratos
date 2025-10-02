@@ -160,7 +160,7 @@ export class GitRegistrationComponent extends CreateEndpointHelperComponent impl
       selectedType: [defaultSelection, []],
       nameField: ['', [Validators.required]],
       urlField: ['', [Validators.required]],
-      skipSllField: [false, []],
+      skipSSLField: [false, []],
       createSystemEndpointField: [true, []],
     });
     this.updateType();
@@ -201,7 +201,7 @@ export class GitRegistrationComponent extends CreateEndpointHelperComponent impl
     const url: string = this.updateUrlWithSuffix(defn.url || this.registerForm.controls.urlField.value, defn);
     // If we're in enterprise mode also assign the skipSSL field, otherwise assume false
     const skipSSL = this.registerForm.controls.nameField.value && this.registerForm.controls.urlField.value ?
-      this.registerForm.controls.skipSllField.value :
+      this.registerForm.controls.skipSSLField.value :
       false;
     const createSystemEndpoint = this.registerForm.controls.createSystemEndpointField.value;
 
