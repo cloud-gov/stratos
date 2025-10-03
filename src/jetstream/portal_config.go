@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 	"github.com/cloud-gov/cf-common/v2/env"
+	"github.com/cloudfoundry/stratos/src/jetstream/api"
 )
 
-func (p *portalProxy) GetConfig() *interfaces.PortalConfig {
+func (p *portalProxy) GetConfig() *api.PortalConfig {
 	return &p.Config
 }
 
