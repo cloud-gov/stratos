@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/cloud-gov/cf-common/v2/env"
+	"github.com/govau/cf-common/env"
 )
 
 // StratosPlugin is the interface for a Jetstream plugin

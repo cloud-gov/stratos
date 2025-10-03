@@ -2,8 +2,7 @@ package main
 
 import (
 	"github.com/cloudfoundry/stratos/src/jetstream/api"
-
-	"github.com/cloud-gov/cf-common/v2/env"
+	"github.com/govau/cf-common/env"
 )
 
 func (p *portalProxy) GetConfig() *api.PortalConfig {

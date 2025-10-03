@@ -6,7 +6,7 @@ import (
 	"github.com/cloudfoundry/stratos/src/jetstream/datastore"
 	"github.com/cloudfoundry/stratos/src/jetstream/repository/console_config"
 
-	"github.com/cloud-gov/cf-common/v2/env"
+	"github.com/govau/cf-common/env"
 	. "github.com/smartystreets/goconvey/convey"
 )
 

@@ -25,9 +25,9 @@ import (
 
 	"github.com/antonlindstrom/pgstore"
 	"github.com/cf-stratos/mysqlstore"
-	"github.com/cloud-gov/go-cfenv"
+	cfenv "github.com/cloudfoundry-community/go-cfenv"
 	"github.com/gorilla/sessions"
-	"github.com/cloud-gov/cf-common/v2/env"
+	"github.com/govau/cf-common/env"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/nwmac/sqlitestore"
