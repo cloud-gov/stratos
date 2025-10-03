@@ -5,30 +5,30 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
-	"github.com/cloudfoundry/stratos/src/jetstream/repository/apikeys"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/apikeys"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 	"github.com/gorilla/sessions"
 	"github.com/cloud-gov/cf-common/v2/env"
 	"github.com/labstack/echo/v4"
 )
 
 type portalProxy struct {
-	Config                 api.PortalConfig
+	Config                 interfaces.PortalConfig
 	DatabaseConnectionPool *sql.DB
-	SessionStore           api.SessionStorer
+	SessionStore           interfaces.SessionStorer
 	SessionStoreOptions    *sessions.Options
-	SessionDataStore       api.SessionDataStore
-	Plugins                map[string]api.StratosPlugin
+	SessionDataStore       interfaces.SessionDataStore
+	Plugins                map[string]interfaces.StratosPlugin
 	PluginsStatus          map[string]bool
-	Diagnostics            *api.Diagnostics
+	Diagnostics            *interfaces.Diagnostics
 	SessionCookieName      string
 	EmptyCookieMatcher     *regexp.Regexp // Used to detect and remove empty Cookies sent by certain browsers
-	AuthProviders          map[string]api.AuthProvider
+	AuthProviders          map[string]interfaces.AuthProvider
 	env                    *env.VarSet
-	StratosAuthService     api.StratosAuth
+	StratosAuthService     interfaces.StratosAuth
 	APIKeysRepository      apikeys.Repository
 	PluginRegisterRoutes   map[string]func(echo.Context) error
-	StoreFactory           api.StoreFactory
+	StoreFactory           interfaces.StoreFactory
 }
 
 // HttpSessionStore - Interface for a store that can manage HTTP Sessions

@@ -7,10 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
-	"github.com/cloudfoundry/stratos/src/jetstream/api/config"
-	mock_api "github.com/cloudfoundry/stratos/src/jetstream/api/mock"
-	"github.com/cloudfoundry/stratos/src/jetstream/testutils"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces/config"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/mock_interfaces"
 	"github.com/golang/mock/gomock"
 	_ "github.com/satori/go.uuid"
 	. "github.com/smartystreets/goconvey/convey"
@@ -49,7 +48,7 @@ func TestRegisterCFCluster(t *testing.T) {
 	}
 
 	mock.ExpectExec(insertIntoCNSIs).
-		WithArgs(sqlmock.AnyArg(), "Some fancy CF Cluster", "cf", mockV2Info.URL, mockAuthEndpoint, mockTokenEndpoint, mockDopplerEndpoint, true, mockClientId, sqlmock.AnyArg(), false, "", "", "", "").
+		WithArgs(sqlmock.AnyArg(), "Some fancy CF Cluster", "cf", mockV2Info.URL, mockAuthEndpoint, mockTokenEndpoint, mockDopplerEndpoint, true, mockClientId, sqlmock.AnyArg(), false, "", "", "").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	if err := pp.RegisterEndpoint(ctx, getCFPlugin(pp, "cf").Info); err != nil {
@@ -85,7 +84,7 @@ func TestRegisterCFClusterWithMissingName(t *testing.T) {
 	}
 }
 
-func getCFPlugin(p *portalProxy, endpointType string) api.EndpointPlugin {
+func getCFPlugin(p *portalProxy, endpointType string) interfaces.EndpointPlugin {
 
 	for _, plugin := range p.Plugins {
 		endpointPlugin, err := plugin.GetEndpointPlugin()
@@ -254,7 +253,7 @@ func TestGetCFv2InfoWithBadURL(t *testing.T) {
 
 	endpointPlugin, _ := cfPlugin.GetEndpointPlugin()
 	invalidEndpoint := "%zzzz"
-	if _, _, err := endpointPlugin.Info(invalidEndpoint, true, ""); err == nil {
+	if _, _, err := endpointPlugin.Info(invalidEndpoint, true); err == nil {
 		t.Error("getCFv2Info should not return a valid response when the URL is bad.")
 	}
 }
@@ -266,7 +265,7 @@ func TestGetCFv2InfoWithInvalidEndpoint(t *testing.T) {
 	endpointPlugin, _ := cfPlugin.GetEndpointPlugin()
 
 	ep := "http://invalid.net"
-	if _, _, err := endpointPlugin.Info(ep, true, ""); err == nil {
+	if _, _, err := endpointPlugin.Info(ep, true); err == nil {
 		t.Error("getCFv2Info should not return a valid response when the endpoint is invalid.")
 	}
 }
@@ -279,7 +278,7 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 
 		// mock StratosAuthService
 		ctrl := gomock.NewController(t)
-		mockStratosAuth := mock_api.NewMockStratosAuth(ctrl)
+		mockStratosAuth := mock_interfaces.NewMockStratosAuth(ctrl)
 		defer ctrl.Finish()
 
 		// setup mock DB, PortalProxy and mock StratosAuthService
@@ -323,7 +322,7 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 							Return(mockAdmin.ConnectedUser, nil)
 
 						// return no already saved endpoints
-						rows := testutils.GetEmptyCNSIRows()
+						rows := sqlmock.NewRows(rowFieldsForCNSI)
 						mock.ExpectQuery(selectAnyFromCNSIs).WithArgs(mockV2Info[0].URL).WillReturnRows(rows)
 
 						mock.ExpectExec(insertIntoCNSIs).
@@ -353,7 +352,7 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 							Return(mockAdmin.ConnectedUser, nil)
 
 						// return a user endpoint with same apiurl
-						rows := testutils.GetEmptyCNSIRows().AddRow(userEndpoint.QueryArgs...)
+						rows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(userEndpoint.QueryArgs...)
 						mock.ExpectQuery(selectAnyFromCNSIs).WithArgs(mockV2Info[0].URL).WillReturnRows(rows)
 
 						// save cnsi
@@ -381,7 +380,7 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 							Return(mockAdmin.ConnectedUser, nil)
 
 						// return a admin endpoint with same apiurl
-						rows := testutils.GetEmptyCNSIRows().AddRow(adminEndpoint.QueryArgs...)
+						rows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(adminEndpoint.QueryArgs...)
 						mock.ExpectQuery(selectAnyFromCNSIs).WithArgs(mockV2Info[0].URL).WillReturnRows(rows)
 
 						// test
@@ -389,7 +388,7 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 						dberr := mock.ExpectationsWereMet()
 
 						Convey("should fail ", func() {
-							So(err, ShouldResemble, api.NewHTTPShadowError(
+							So(err, ShouldResemble, interfaces.NewHTTPShadowError(
 								http.StatusBadRequest,
 								"Can not register same system endpoint multiple times",
 								"Can not register same system endpoint multiple times",
@@ -419,7 +418,7 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 							Return(mockAdmin.ConnectedUser, nil)
 
 						// return a admin endpoint with same apiurl
-						rows := testutils.GetEmptyCNSIRows().AddRow(systemEndpoint.QueryArgs...)
+						rows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(systemEndpoint.QueryArgs...)
 						mock.ExpectQuery(selectAnyFromCNSIs).WithArgs(mockV2Info[0].URL).WillReturnRows(rows)
 
 						// save cnsi
@@ -447,7 +446,7 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 							Return(mockAdmin.ConnectedUser, nil)
 
 						// return a user endpoint with same apiurl
-						rows := testutils.GetEmptyCNSIRows().AddRow(adminEndpoint.QueryArgs...)
+						rows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(adminEndpoint.QueryArgs...)
 						mock.ExpectQuery(selectAnyFromCNSIs).WithArgs(mockV2Info[0].URL).WillReturnRows(rows)
 
 						// test
@@ -455,7 +454,7 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 						dberr := mock.ExpectationsWereMet()
 
 						Convey("there should be no error", func() {
-							So(err, ShouldResemble, api.NewHTTPShadowError(
+							So(err, ShouldResemble, interfaces.NewHTTPShadowError(
 								http.StatusBadRequest,
 								"Can not register same endpoint multiple times",
 								"Can not register same endpoint multiple times",
@@ -485,7 +484,7 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 							GetUser(gomock.Eq(mockUser1.ConnectedUser.GUID)).
 							Return(mockUser1.ConnectedUser, nil)
 
-						rows := testutils.GetEmptyCNSIRows()
+						rows := sqlmock.NewRows(rowFieldsForCNSI)
 						mock.ExpectQuery(selectAnyFromCNSIs).WithArgs(mockV2Info[0].URL).WillReturnRows(rows)
 
 						mock.ExpectExec(insertIntoCNSIs).
@@ -512,7 +511,7 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 							GetUser(gomock.Eq(mockUser1.ConnectedUser.GUID)).
 							Return(mockUser1.ConnectedUser, nil)
 
-						rows := testutils.GetEmptyCNSIRows().AddRow(userEndpoint2.QueryArgs...)
+						rows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(userEndpoint2.QueryArgs...)
 						mock.ExpectQuery(selectAnyFromCNSIs).WithArgs(mockV2Info[0].URL).WillReturnRows(rows)
 
 						mock.ExpectExec(insertIntoCNSIs).
@@ -537,14 +536,14 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 							GetUser(gomock.Eq(mockUser1.ConnectedUser.GUID)).
 							Return(mockUser1.ConnectedUser, nil)
 
-						rows := testutils.GetEmptyCNSIRows().AddRow(userEndpoint.QueryArgs...)
+						rows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(userEndpoint.QueryArgs...)
 						mock.ExpectQuery(selectAnyFromCNSIs).WithArgs(mockV2Info[0].URL).WillReturnRows(rows)
 
 						err := pp.RegisterEndpoint(userEndpoint.EchoContext, getCFPlugin(pp, "cf").Info)
 						dberr := mock.ExpectationsWereMet()
 
 						Convey("should fail ", func() {
-							So(err, ShouldResemble, api.NewHTTPShadowError(
+							So(err, ShouldResemble, interfaces.NewHTTPShadowError(
 								http.StatusBadRequest,
 								"Can not register same endpoint multiple times",
 								"Can not register same endpoint multiple times",
@@ -569,14 +568,14 @@ func TestRegisterWithUserEndpointsEnabled(t *testing.T) {
 							GetUser(gomock.Eq(mockUser1.ConnectedUser.GUID)).
 							Return(mockUser1.ConnectedUser, nil)
 
-						rows := testutils.GetEmptyCNSIRows().AddRow(userEndpoint.QueryArgs...)
+						rows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(userEndpoint.QueryArgs...)
 						mock.ExpectQuery(selectAnyFromCNSIs).WithArgs(mockV2Info[0].URL).WillReturnRows(rows)
 
 						err := pp.RegisterEndpoint(userEndpoint.EchoContext, getCFPlugin(pp, "cf").Info)
 						dberr := mock.ExpectationsWereMet()
 
 						Convey("should fail ", func() {
-							So(err, ShouldResemble, api.NewHTTPShadowError(
+							So(err, ShouldResemble, interfaces.NewHTTPShadowError(
 								http.StatusBadRequest,
 								"Can not register same endpoint multiple times",
 								"Can not register same endpoint multiple times",
@@ -601,7 +600,7 @@ func TestListCNSIsWithUserEndpointsEnabled(t *testing.T) {
 
 		// mock StratosAuthService
 		ctrl := gomock.NewController(t)
-		mockStratosAuth := mock_api.NewMockStratosAuth(ctrl)
+		mockStratosAuth := mock_interfaces.NewMockStratosAuth(ctrl)
 		defer ctrl.Finish()
 
 		// setup mock DB, PortalProxy and mock StratosAuthService
@@ -622,11 +621,11 @@ func TestListCNSIsWithUserEndpointsEnabled(t *testing.T) {
 		userEndpoint1Args := createEndpointRowArgs("CF Endpoint 2", "https://127.0.0.1:50002", mockAuthEndpoint, mockTokenEndpoint, mockUser1.ConnectedUser.GUID, mockUser1.ConnectedUser.Admin)
 		userEndpoint2Args := createEndpointRowArgs("CF Endpoint 3", "https://127.0.0.1:50003", mockAuthEndpoint, mockTokenEndpoint, mockUser2.ConnectedUser.GUID, mockUser2.ConnectedUser.Admin)
 
-		adminRows := testutils.GetEmptyCNSIRows().
+		adminRows := sqlmock.NewRows(rowFieldsForCNSI).
 			AddRow(adminEndpointArgs...)
-		user1Rows := testutils.GetEmptyCNSIRows().
+		user1Rows := sqlmock.NewRows(rowFieldsForCNSI).
 			AddRow(userEndpoint1Args...)
-		allRows := testutils.GetEmptyCNSIRows().
+		allRows := sqlmock.NewRows(rowFieldsForCNSI).
 			AddRow(adminEndpointArgs...).
 			AddRow(userEndpoint1Args...).
 			AddRow(userEndpoint2Args...)

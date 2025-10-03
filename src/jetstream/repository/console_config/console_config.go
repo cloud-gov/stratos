@@ -1,11 +1,11 @@
 package console_config
 
 import (
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 )
 
 type Repository interface {
-	GetConsoleConfig() (*api.ConsoleConfig, error)
+	GetConsoleConfig() (*interfaces.ConsoleConfig, error)
 	DeleteConsoleConfig() error
 
 	// Access to the config data

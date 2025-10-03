@@ -2,12 +2,16 @@ package main
 
 import (
 	"crypto/sha1"
+	"crypto/tls"
 	"database/sql"
 	"encoding/gob"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,13 +24,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/custombinder"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/custombinder"
+	_ "github.com/cloudfoundry-incubator/stratos/src/jetstream/docs"
 
+	"bitbucket.org/liamstask/goose/lib/goose"
 	"github.com/antonlindstrom/pgstore"
 	"github.com/cf-stratos/mysqlstore"
-	"github.com/cloud-gov/cf-common/v2/env"
 	"github.com/cloud-gov/go-cfenv"
 	"github.com/gorilla/sessions"
+	"github.com/cloud-gov/cf-common/v2/env"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/nwmac/sqlitestore"
@@ -34,17 +40,17 @@ import (
 	log "github.com/sirupsen/logrus"
 	echoSwagger "github.com/swaggo/echo-swagger"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
-	"github.com/cloudfoundry/stratos/src/jetstream/api/config"
-	"github.com/cloudfoundry/stratos/src/jetstream/crypto"
-	"github.com/cloudfoundry/stratos/src/jetstream/datastore"
-	"github.com/cloudfoundry/stratos/src/jetstream/factory"
-	"github.com/cloudfoundry/stratos/src/jetstream/repository/apikeys"
-	"github.com/cloudfoundry/stratos/src/jetstream/repository/cnsis"
-	"github.com/cloudfoundry/stratos/src/jetstream/repository/console_config"
-	"github.com/cloudfoundry/stratos/src/jetstream/repository/localusers"
-	"github.com/cloudfoundry/stratos/src/jetstream/repository/sessiondata"
-	"github.com/cloudfoundry/stratos/src/jetstream/repository/tokens"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/crypto"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/datastore"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/factory"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/apikeys"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/cnsis"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/console_config"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces/config"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/localusers"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/sessiondata"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/tokens"
 )
 
 // @title Stratos API
@@ -79,6 +85,15 @@ const (
 )
 
 var appVersion string
+
+var (
+	// Standard clients
+	httpClient        = http.Client{}
+	httpClientSkipSSL = http.Client{}
+	// Clients to use typically for mutating operations - typically allow a longer request timeout
+	httpClientMutating        = http.Client{}
+	httpClientMutatingSkipSSL = http.Client{}
+)
 
 // getEnvironmentLookup return a search path for configuration settings
 func getEnvironmentLookup() *env.VarSet {
@@ -123,6 +138,8 @@ func main() {
 		}
 	}
 
+	rand.Seed(time.Now().UnixNano())
+
 	log.SetOutput(os.Stdout)
 
 	log.Info("========================================")
@@ -132,7 +149,7 @@ func main() {
 	log.Info("Initialization started.")
 
 	// Load the portal configuration from env vars
-	var portalConfig api.PortalConfig
+	var portalConfig interfaces.PortalConfig
 	portalConfig, err := loadPortalConfig(portalConfig, envLookup)
 	if err != nil {
 		log.Fatal(err) // calls os.Exit(1) after logging
@@ -158,7 +175,7 @@ func main() {
 	log.Infof("Stratos Version: %s", portalConfig.ConsoleVersion)
 
 	// Initialize an empty config for the console - initially not setup
-	portalConfig.ConsoleConfig = new(api.ConsoleConfig)
+	portalConfig.ConsoleConfig = new(interfaces.ConsoleConfig)
 
 	// Initialize the HTTP client
 	initializeHTTPClients(portalConfig.HTTPClientTimeoutInSecs, portalConfig.HTTPClientTimeoutMutatingInSecs, portalConfig.HTTPConnectionTimeoutInSecs)
@@ -189,7 +206,7 @@ func main() {
 	apikeys.InitRepositoryProvider(dc.DatabaseProvider)
 
 	// Establish a Postgresql connection pool
-	databaseConnectionPool, err := initConnPool(dc, envLookup)
+	databaseConnectionPool, migratorConf, err := initConnPool(dc, envLookup)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -204,7 +221,7 @@ func main() {
 		log.Info("Session Store Secret detected okay")
 	}
 
-	for _, configPlugin := range api.JetstreamConfigPlugins {
+	for _, configPlugin := range interfaces.JetstreamConfigPlugins {
 		configPlugin(envLookup, &portalConfig)
 	}
 
@@ -219,7 +236,7 @@ func main() {
 	// Config plugins get to determine if we should run migrations on this instance
 	if portalConfig.CanMigrateDatabaseSchema {
 		// Create the database schema otherwise wait for the datbase schema
-		err = datastore.ApplyMigrations(databaseConnectionPool)
+		err = datastore.ApplyMigrations(migratorConf, databaseConnectionPool)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -305,7 +322,7 @@ func main() {
 
 		// Plugin cleanup
 		for _, plugin := range portalProxy.Plugins {
-			if pCleanup, ok := plugin.(api.StratosPluginCleanup); ok {
+			if pCleanup, ok := plugin.(interfaces.StratosPluginCleanup); ok {
 				pCleanup.Destroy()
 			}
 		}
@@ -322,10 +339,10 @@ func main() {
 	}
 
 	// Init auth service
-	err = portalProxy.InitStratosAuthService(api.AuthEndpointTypes[portalProxy.Config.AuthEndpointType])
+	err = portalProxy.InitStratosAuthService(interfaces.AuthEndpointTypes[portalProxy.Config.AuthEndpointType])
 	if err != nil {
 		log.Warnf("Defaulting to UAA authentication: %v", err)
-		err = portalProxy.InitStratosAuthService(api.Remote)
+		err = portalProxy.InitStratosAuthService(interfaces.Remote)
 		if err != nil {
 			log.Fatalf("Could not initialise auth service. %v", err)
 		}
@@ -334,7 +351,7 @@ func main() {
 	// Initialise Plugins
 	portalProxy.loadPlugins()
 
-	initedPlugins := make(map[string]api.StratosPlugin)
+	initedPlugins := make(map[string]interfaces.StratosPlugin)
 	portalProxy.PluginsStatus = make(map[string]bool)
 
 	// Initialise general plugins
@@ -381,7 +398,7 @@ func (portalProxy *portalProxy) GetDatabaseConnection() *sql.DB {
 }
 
 // GetSessionDataStore returns the store that can be used for extra session data
-func (portalProxy *portalProxy) GetSessionDataStore() api.SessionDataStore {
+func (portalProxy *portalProxy) GetSessionDataStore() interfaces.SessionDataStore {
 	return portalProxy.SessionDataStore
 }
 
@@ -428,7 +445,7 @@ func initialiseConsoleConfiguration(portalProxy *portalProxy) error {
 	return nil
 }
 
-func showStratosConfig(portalProxy *portalProxy, config *api.ConsoleConfig) {
+func showStratosConfig(portalProxy *portalProxy, config *interfaces.ConsoleConfig) {
 	log.Infof("Stratos is initialized with the following setup:")
 	log.Infof("... Auth Endpoint Type      : %s", config.AuthEndpointType)
 
@@ -447,7 +464,7 @@ func showSSOConfig(portalProxy *portalProxy) {
 	log.Infof("... SSO Redirect Allow-list : %s", portalProxy.Config.SSOAllowList)
 }
 
-func getEncryptionKey(pc api.PortalConfig) ([]byte, error) {
+func getEncryptionKey(pc interfaces.PortalConfig) ([]byte, error) {
 	log.Debug("getEncryptionKey")
 
 	// If it exists in "EncryptionKey" we must be in compose; use it.
@@ -462,7 +479,7 @@ func getEncryptionKey(pc api.PortalConfig) ([]byte, error) {
 
 	// Check we have volume and filename
 	if len(pc.EncryptionKeyVolume) == 0 && len(pc.EncryptionKeyFilename) == 0 {
-		return nil, errors.New("you must configure either an Encryption key or the Encryption key filename")
+		return nil, errors.New("You must configure either an Encryption key or the Encryption key filename")
 	}
 
 	// Read the key from the shared volume
@@ -475,13 +492,13 @@ func getEncryptionKey(pc api.PortalConfig) ([]byte, error) {
 	return key, nil
 }
 
-func initConnPool(dc datastore.DatabaseConfig, env *env.VarSet) (*sql.DB, error) {
+func initConnPool(dc datastore.DatabaseConfig, env *env.VarSet) (*sql.DB, *goose.DBConf, error) {
 	log.Debug("initConnPool")
 
 	// initialize the database connection pool
-	pool, err := datastore.GetConnection(dc, env)
+	pool, conf, err := datastore.GetConnection(dc, env)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Ensure that the database is responsive
@@ -498,8 +515,8 @@ func initConnPool(dc datastore.DatabaseConfig, env *env.VarSet) (*sql.DB, error)
 		}
 
 		// If our timeout boundary has been exceeded, bail out
-		if time.Until(timeout) < 0 {
-			return nil, fmt.Errorf("timeout boundary of %d minutes has been exceeded. Exiting", TimeoutBoundary)
+		if timeout.Sub(time.Now()) < 0 {
+			return nil, nil, fmt.Errorf("timeout boundary of %d minutes has been exceeded. Exiting", TimeoutBoundary)
 		}
 
 		// Circle back and try again
@@ -507,10 +524,10 @@ func initConnPool(dc datastore.DatabaseConfig, env *env.VarSet) (*sql.DB, error)
 		time.Sleep(time.Second)
 	}
 
-	return pool, nil
+	return pool, conf, nil
 }
 
-func initSessionStore(db *sql.DB, databaseProvider string, pc api.PortalConfig, sessionExpiry int, env *env.VarSet) (HttpSessionStore, *sessions.Options, error) {
+func initSessionStore(db *sql.DB, databaseProvider string, pc interfaces.PortalConfig, sessionExpiry int, env *env.VarSet) (HttpSessionStore, *sessions.Options, error) {
 	log.Debug("initSessionStore")
 
 	sessionsTable := "sessions"
@@ -562,11 +579,11 @@ func initSessionStore(db *sql.DB, databaseProvider string, pc api.PortalConfig, 
 	return sessionStore, sessionStore.Options, err
 }
 
-func loadPortalConfig(pc api.PortalConfig, env *env.VarSet) (api.PortalConfig, error) {
+func loadPortalConfig(pc interfaces.PortalConfig, env *env.VarSet) (interfaces.PortalConfig, error) {
 	log.Debug("loadPortalConfig")
 
 	if err := config.Load(&pc, env.Lookup); err != nil {
-		return pc, fmt.Errorf("unable to load configuration. %v", err)
+		return pc, fmt.Errorf("Unable to load configuration. %v", err)
 	}
 
 	// Add custom properties
@@ -581,9 +598,9 @@ func loadPortalConfig(pc api.PortalConfig, env *env.VarSet) (api.PortalConfig, e
 
 	if len(pc.AuthEndpointType) == 0 {
 		//Default to "remote" if AUTH_ENDPOINT_TYPE is not set
-		pc.AuthEndpointType = string(api.Remote)
+		pc.AuthEndpointType = string(interfaces.Remote)
 	} else {
-		val, endpointTypeSupported := api.AuthEndpointTypes[pc.AuthEndpointType]
+		val, endpointTypeSupported := interfaces.AuthEndpointTypes[pc.AuthEndpointType]
 		if endpointTypeSupported {
 			pc.AuthEndpointType = string(val)
 		} else {
@@ -600,24 +617,24 @@ func loadDatabaseConfig(dc datastore.DatabaseConfig, env *env.VarSet) (datastore
 
 	parsedDBConfig, err := datastore.ParseCFEnvs(&dc, env)
 	if err != nil {
-		return dc, errors.New("could not parse Cloud Foundry Services environment")
+		return dc, errors.New("Could not parse Cloud Foundry Services environment")
 	}
 
 	if parsedDBConfig {
 		log.Info("Using Cloud Foundry DB service")
 	} else if err := config.Load(&dc, env.Lookup); err != nil {
-		return dc, fmt.Errorf("unable to load database configuration. %v", err)
+		return dc, fmt.Errorf("Unable to load database configuration. %v", err)
 	}
 
 	dc, err = datastore.NewDatabaseConnectionParametersFromConfig(dc)
 	if err != nil {
-		return dc, fmt.Errorf("unable to load database configuration. %v", err)
+		return dc, fmt.Errorf("Unable to load database configuration. %v", err)
 	}
 
 	return dc, nil
 }
 
-func detectTLSCert(pc api.PortalConfig) (string, string, error) {
+func detectTLSCert(pc interfaces.PortalConfig) (string, string, error) {
 	log.Debug("detectTLSCert")
 	certFilename := "pproxy.crt"
 	certKeyFilename := "pproxy.key"
@@ -643,19 +660,19 @@ func detectTLSCert(pc api.PortalConfig) (string, string, error) {
 		return pc.TLSCertPath, pc.TLSCertKeyPath, nil
 	}
 
-	err := os.WriteFile(certFilename, []byte(pc.TLSCert), 0600)
+	err := ioutil.WriteFile(certFilename, []byte(pc.TLSCert), 0600)
 	if err != nil {
 		return "", "", err
 	}
 
-	err = os.WriteFile(certKeyFilename, []byte(pc.TLSCertKey), 0600)
+	err = ioutil.WriteFile(certKeyFilename, []byte(pc.TLSCertKey), 0600)
 	if err != nil {
 		return "", "", err
 	}
 	return certFilename, certKeyFilename, nil
 }
 
-func newPortalProxy(pc api.PortalConfig, dcp *sql.DB, ss HttpSessionStore, sessionStoreOptions *sessions.Options, env *env.VarSet) *portalProxy {
+func newPortalProxy(pc interfaces.PortalConfig, dcp *sql.DB, ss HttpSessionStore, sessionStoreOptions *sessions.Options, env *env.VarSet) *portalProxy {
 	log.Debug("newPortalProxy")
 
 	// Generate cookie name - avoids issues if the cookie domain is changed
@@ -689,30 +706,30 @@ func newPortalProxy(pc api.PortalConfig, dcp *sql.DB, ss HttpSessionStore, sessi
 		SessionStoreOptions:    sessionStoreOptions,
 		SessionCookieName:      cookieName,
 		EmptyCookieMatcher:     regexp.MustCompile(cookieName + "=(?:;[ ]*|$)"),
-		AuthProviders:          make(map[string]api.AuthProvider),
+		AuthProviders:          make(map[string]interfaces.AuthProvider),
 		env:                    env,
 	}
 
 	// Initialize built-in auth providers
 
 	// Basic Auth
-	pp.AddAuthProvider(api.AuthTypeHttpBasic, api.AuthProvider{
+	pp.AddAuthProvider(interfaces.AuthTypeHttpBasic, interfaces.AuthProvider{
 		Handler:  pp.doHttpBasicFlowRequest,
 		UserInfo: pp.GetCNSIUserFromBasicToken,
 	})
 
 	// No authentication
-	pp.AddAuthProvider(api.AuthConnectTypeNone, api.AuthProvider{
+	pp.AddAuthProvider(interfaces.AuthConnectTypeNone, interfaces.AuthProvider{
 		Handler:  pp.doNoAuthFlowRequest,
 		UserInfo: pp.getCNSIUserForNoAuth,
 	})
 
 	// Generic Bearer Auth (HTTP Authorization header with 'bearer' prefix)
-	pp.AddAuthProvider(api.AuthTypeBearer, api.AuthProvider{
+	pp.AddAuthProvider(interfaces.AuthTypeBearer, interfaces.AuthProvider{
 		Handler: pp.doBearerFlowRequest,
-		UserInfo: func(cnsiGUID string, cfTokenRecord *api.TokenRecord) (*api.ConnectedUser, bool) {
+		UserInfo: func(cnsiGUID string, cfTokenRecord *interfaces.TokenRecord) (*interfaces.ConnectedUser, bool) {
 			// don't fetch user info for the generic token auth
-			return &api.ConnectedUser{
+			return &interfaces.ConnectedUser{
 				Name: cfTokenRecord.RefreshToken,
 				GUID: cfTokenRecord.RefreshToken,
 			}, true
@@ -720,11 +737,11 @@ func newPortalProxy(pc api.PortalConfig, dcp *sql.DB, ss HttpSessionStore, sessi
 	})
 
 	// Generic Token Auth (HTTP Authorization header with 'token' prefix)
-	pp.AddAuthProvider(api.AuthTypeToken, api.AuthProvider{
+	pp.AddAuthProvider(interfaces.AuthTypeToken, interfaces.AuthProvider{
 		Handler: pp.doTokenFlowRequest,
-		UserInfo: func(cnsiGUID string, cfTokenRecord *api.TokenRecord) (*api.ConnectedUser, bool) {
+		UserInfo: func(cnsiGUID string, cfTokenRecord *interfaces.TokenRecord) (*interfaces.ConnectedUser, bool) {
 			// don't fetch user info for the generic token auth
-			return &api.ConnectedUser{
+			return &interfaces.ConnectedUser{
 				Name: cfTokenRecord.RefreshToken,
 				GUID: cfTokenRecord.RefreshToken,
 			}, true
@@ -732,25 +749,65 @@ func newPortalProxy(pc api.PortalConfig, dcp *sql.DB, ss HttpSessionStore, sessi
 	})
 
 	// OIDC
-	pp.AddAuthProvider(api.AuthTypeOIDC, api.AuthProvider{
+	pp.AddAuthProvider(interfaces.AuthTypeOIDC, interfaces.AuthProvider{
 		Handler: pp.DoOidcFlowRequest,
 	})
 
 	var err error
 	pp.APIKeysRepository, err = apikeys.NewPgsqlAPIKeysRepository(pp.DatabaseConnectionPool)
 	if err != nil {
-		panic(fmt.Errorf("can't initialize APIKeysRepository: %v", err))
+		panic(fmt.Errorf("Can't initialize APIKeysRepository: %v", err))
 	}
 
 	return pp
 }
 
-func echoShouldNotLog(ec echo.Context) bool {
-	// Don't log readiness probes
-	return ec.Request().RequestURI == "/pp/v1/ping"
+func initializeHTTPClients(timeout int64, timeoutMutating int64, connectionTimeout int64) {
+	log.Debug("initializeHTTPClients")
+
+	// Common KeepAlive dialer shared by both transports
+	dial := (&net.Dialer{
+		Timeout:   time.Duration(connectionTimeout) * time.Second,
+		KeepAlive: 30 * time.Second, // should be less than any proxy connection timeout (typically 2-3 minutes)
+	}).Dial
+
+	tr := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		Dial:                dial,
+		TLSHandshakeTimeout: 10 * time.Second, // 10 seconds is a sound default value (default is 0)
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: false},
+		MaxIdleConnsPerHost: 6, // (default is 2)
+	}
+	httpClient.Transport = tr
+	httpClient.Timeout = time.Duration(timeout) * time.Second
+
+	trSkipSSL := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		Dial:                dial,
+		TLSHandshakeTimeout: 10 * time.Second, // 10 seconds is a sound default value (default is 0)
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+		MaxIdleConnsPerHost: 6, // (default is 2)
+	}
+
+	httpClientSkipSSL.Transport = trSkipSSL
+	httpClientSkipSSL.Timeout = time.Duration(timeout) * time.Second
+
+	// Clients with longer timeouts (use for mutating operations)
+	httpClientMutating.Transport = tr
+	httpClientMutating.Timeout = time.Duration(timeoutMutating) * time.Second
+	httpClientMutatingSkipSSL.Transport = trSkipSSL
+	httpClientMutatingSkipSSL.Timeout = time.Duration(timeoutMutating) * time.Second
 }
 
-func start(config api.PortalConfig, p *portalProxy, needSetupMiddleware bool, isUpgrade bool, envLookup *env.VarSet) error {
+func echoShouldNotLog(ec echo.Context) bool {
+	// Don't log readiness probes
+	if ec.Request().RequestURI == "/pp/v1/ping" {
+		return true
+	}
+	return false
+}
+
+func start(config interfaces.PortalConfig, p *portalProxy, needSetupMiddleware bool, isUpgrade bool, envLookup *env.VarSet) error {
 	log.Debug("start")
 	e := echo.New()
 	e.HideBanner = true
@@ -827,7 +884,7 @@ func start(config api.PortalConfig, p *portalProxy, needSetupMiddleware bool, is
 	return nil
 }
 
-func (p *portalProxy) GetEndpointTypeSpec(typeName string) (api.EndpointPlugin, error) {
+func (p *portalProxy) GetEndpointTypeSpec(typeName string) (interfaces.EndpointPlugin, error) {
 
 	for _, plugin := range p.Plugins {
 		endpointPlugin, err := plugin.GetEndpointPlugin()
@@ -843,6 +900,44 @@ func (p *portalProxy) GetEndpointTypeSpec(typeName string) (api.EndpointPlugin, 
 	}
 
 	return nil, errors.New("Endpoint type plugin not loaded")
+}
+
+func (p *portalProxy) GetHttpClient(skipSSLValidation bool) http.Client {
+	return p.getHttpClient(skipSSLValidation, false)
+}
+
+// GetHttpClientForRequest returns an Http Client for the giving request
+func (p *portalProxy) GetHttpClientForRequest(req *http.Request, skipSSLValidation bool) http.Client {
+	isMutating := req.Method != "GET" && req.Method != "HEAD"
+	client := p.getHttpClient(skipSSLValidation, isMutating)
+
+	// Is this is a long-running request, then use a different timeout
+	if req.Header.Get(longRunningTimeoutHeader) == "true" {
+		longRunningClient := http.Client{}
+		longRunningClient.Transport = client.Transport
+		longRunningClient.Timeout = time.Duration(p.GetConfig().HTTPClientTimeoutLongRunningInSecs) * time.Second
+		return longRunningClient
+	}
+
+	return client
+}
+
+func (p *portalProxy) getHttpClient(skipSSLValidation bool, mutating bool) http.Client {
+	var client http.Client
+	if !mutating {
+		if skipSSLValidation {
+			client = httpClientSkipSSL
+		} else {
+			client = httpClient
+		}
+	} else {
+		if skipSSLValidation {
+			client = httpClientMutatingSkipSSL
+		} else {
+			client = httpClientMutating
+		}
+	}
+	return client
 }
 
 // routes endpoint registration requests to Register functions of respective plugins
@@ -862,16 +957,16 @@ func (p *portalProxy) GetEndpointTypeSpec(typeName string) (api.EndpointPlugin, 
 // @Param cnsi_client_id formData string false "Client ID"
 // @Param cnsi_client_secret formData string false "Client secret"
 // @Param sub_type formData string false "Endpoint subtype"
-// @Success 200 {object} api.CNSIRecord "Endpoint object"
-// @Failure 400 {object} api.ErrorResponseBody "Error response"
-// @Failure 401 {object} api.ErrorResponseBody "Error response"
+// @Success 200 {object} interfaces.CNSIRecord "Endpoint object"
+// @Failure 400 {object} interfaces.ErrorResponseBody "Error response"
+// @Failure 401 {object} interfaces.ErrorResponseBody "Error response"
 // @Security ApiKeyAuth
 // @Router /endpoints [post]
 func (p *portalProxy) pluginRegisterRouter(c echo.Context) error {
 	log.Debug("pluginRegisterRouter")
 
-	params := new(api.RegisterEndpointParams)
-	err := api.BindOnce(params, c)
+	params := new(interfaces.RegisterEndpointParams)
+	err := interfaces.BindOnce(params, c)
 	if err != nil {
 		return err
 	}
@@ -885,7 +980,7 @@ func (p *portalProxy) pluginRegisterRouter(c echo.Context) error {
 		return val(c)
 	}
 
-	return fmt.Errorf("unknown endpoint_type %s", params.EndpointType)
+	return fmt.Errorf("Unknown endpoint_type %s", params.EndpointType)
 }
 
 func (p *portalProxy) registerRoutes(e *echo.Echo, needSetupMiddleware bool) {
@@ -1059,8 +1154,8 @@ func (p *portalProxy) registerRoutes(e *echo.Echo, needSetupMiddleware bool) {
 	}
 }
 
-func (p *portalProxy) AddLoginHook(priority int, function api.LoginHookFunc) error {
-	p.GetConfig().LoginHooks = append(p.GetConfig().LoginHooks, api.LoginHook{
+func (p *portalProxy) AddLoginHook(priority int, function interfaces.LoginHookFunc) error {
+	p.GetConfig().LoginHooks = append(p.GetConfig().LoginHooks, interfaces.LoginHook{
 		Priority: priority,
 		Function: function,
 	})
@@ -1083,7 +1178,7 @@ func (p *portalProxy) ExecuteLoginHooks(c echo.Context) error {
 	}
 
 	if erred {
-		return fmt.Errorf("failed to execute one or more login hooks")
+		return fmt.Errorf("Failed to execute one or more login hooks")
 	}
 	return nil
 }
@@ -1183,12 +1278,12 @@ func stopEchoWhenUpgraded(e *echo.Echo, env *env.VarSet) {
 }
 
 // GetStoreFactory gets the store factory
-func (portalProxy *portalProxy) GetStoreFactory() api.StoreFactory {
+func (portalProxy *portalProxy) GetStoreFactory() interfaces.StoreFactory {
 	return portalProxy.StoreFactory
 }
 
 // SetStoreFactory sets the store factory
-func (portalProxy *portalProxy) SetStoreFactory(f api.StoreFactory) api.StoreFactory {
+func (portalProxy *portalProxy) SetStoreFactory(f interfaces.StoreFactory) interfaces.StoreFactory {
 	old := portalProxy.StoreFactory
 	portalProxy.StoreFactory = f
 	return old

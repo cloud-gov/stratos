@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 	"github.com/labstack/echo/v4"
 	"gopkg.in/yaml.v2"
 
@@ -20,15 +20,15 @@ import (
 // GeneratedPlugin represents a generated plugin
 type GeneratedPlugin struct {
 	initMethod       func() error
-	middlewarePlugin func() (api.MiddlewarePlugin, error)
-	endpointPlugin   func() (api.EndpointPlugin, error)
-	routePlugin      func() (api.RoutePlugin, error)
+	middlewarePlugin func() (interfaces.MiddlewarePlugin, error)
+	endpointPlugin   func() (interfaces.EndpointPlugin, error)
+	routePlugin      func() (interfaces.RoutePlugin, error)
 }
 
 var authTypeToConnectTypeMap = map[string]string{
-	api.AuthTypeHttpBasic: api.AuthConnectTypeCreds,
-	api.AuthTypeBearer:    api.AuthConnectTypeBearer,
-	api.AuthTypeToken:     api.AuthConnectTypeToken,
+	interfaces.AuthTypeHttpBasic: interfaces.AuthConnectTypeCreds,
+	interfaces.AuthTypeBearer:    interfaces.AuthConnectTypeBearer,
+	interfaces.AuthTypeToken:     interfaces.AuthConnectTypeToken,
 }
 
 const defaultTokenUsername = "**token**"
@@ -48,19 +48,19 @@ type pluginConfig struct {
 
 // Init the plugin
 func (gp GeneratedPlugin) Init() error { return gp.initMethod() }
-func (gp GeneratedPlugin) GetMiddlewarePlugin() (api.MiddlewarePlugin, error) {
+func (gp GeneratedPlugin) GetMiddlewarePlugin() (interfaces.MiddlewarePlugin, error) {
 	return gp.middlewarePlugin()
 }
-func (gp GeneratedPlugin) GetEndpointPlugin() (api.EndpointPlugin, error) {
+func (gp GeneratedPlugin) GetEndpointPlugin() (interfaces.EndpointPlugin, error) {
 	return gp.endpointPlugin()
 }
-func (gp GeneratedPlugin) GetRoutePlugin() (api.RoutePlugin, error) {
+func (gp GeneratedPlugin) GetRoutePlugin() (interfaces.RoutePlugin, error) {
 	return gp.routePlugin()
 }
 
 // GeneratedEndpointPlugin represents a generated endpoint plugin
 type GeneratedEndpointPlugin struct {
-	portalProxy  api.PortalProxy
+	portalProxy  interfaces.PortalProxy
 	endpointType string
 	subTypes     map[string]pluginConfig
 }
@@ -73,13 +73,13 @@ func (gep GeneratedEndpointPlugin) Register(ec echo.Context) error {
 	return gep.portalProxy.RegisterEndpoint(ec, gep.Info)
 }
 
-func (gep GeneratedEndpointPlugin) Validate(userGUID string, cnsiRecord api.CNSIRecord, tokenRecord api.TokenRecord) error {
+func (gep GeneratedEndpointPlugin) Validate(userGUID string, cnsiRecord interfaces.CNSIRecord, tokenRecord interfaces.TokenRecord) error {
 	return nil
 }
 
-func (gep GeneratedEndpointPlugin) Connect(ec echo.Context, cnsiRecord api.CNSIRecord, userId string) (*api.TokenRecord, bool, error) {
-	params := new(api.LoginToCNSIParams)
-	err := api.BindOnce(params, ec)
+func (gep GeneratedEndpointPlugin) Connect(ec echo.Context, cnsiRecord interfaces.CNSIRecord, userId string) (*interfaces.TokenRecord, bool, error) {
+	params := new(interfaces.LoginToCNSIParams)
+	err := interfaces.BindOnce(params, ec)
 	if err != nil {
 		return nil, false, err
 	}
@@ -99,10 +99,10 @@ func (gep GeneratedEndpointPlugin) Connect(ec echo.Context, cnsiRecord api.CNSIR
 		return nil, false, fmt.Errorf("Only %q connect type is supported for %q.%q endpoints", expectedConnectType, gep.GetType(), cnsiRecord.SubType)
 	}
 
-	var tr *api.TokenRecord
+	var tr *interfaces.TokenRecord
 
 	switch params.ConnectType {
-	case api.AuthConnectTypeCreds:
+	case interfaces.AuthConnectTypeCreds:
 		if len(params.Username) == 0 || len(params.Password) == 0 {
 			return nil, false, errors.New("Need username and password")
 		}
@@ -110,26 +110,26 @@ func (gep GeneratedEndpointPlugin) Connect(ec echo.Context, cnsiRecord api.CNSIR
 		authString := fmt.Sprintf("%s:%s", params.Username, params.Password)
 		base64EncodedAuthString := base64.StdEncoding.EncodeToString([]byte(authString))
 
-		tr = &api.TokenRecord{
-			AuthType:     api.AuthTypeHttpBasic,
+		tr = &interfaces.TokenRecord{
+			AuthType:     interfaces.AuthTypeHttpBasic,
 			AuthToken:    base64EncodedAuthString,
 			RefreshToken: params.Username,
 		}
-	case api.AuthConnectTypeBearer:
+	case interfaces.AuthConnectTypeBearer:
 		authString := ec.FormValue("token")
 		base64EncodedAuthString := base64.StdEncoding.EncodeToString([]byte(authString))
 
-		tr = &api.TokenRecord{
-			AuthType:  api.AuthTypeBearer,
+		tr = &interfaces.TokenRecord{
+			AuthType:  interfaces.AuthTypeBearer,
 			AuthToken: base64EncodedAuthString,
 		}
 		tr.RefreshToken = gep.fetchUsername(subType, &cnsiRecord, tr)
-	case api.AuthConnectTypeToken:
+	case interfaces.AuthConnectTypeToken:
 		authString := ec.FormValue("token")
 		base64EncodedAuthString := base64.StdEncoding.EncodeToString([]byte(authString))
 
-		tr = &api.TokenRecord{
-			AuthType:  api.AuthTypeToken,
+		tr = &interfaces.TokenRecord{
+			AuthType:  interfaces.AuthTypeToken,
 			AuthToken: base64EncodedAuthString,
 		}
 		tr.RefreshToken = gep.fetchUsername(subType, &cnsiRecord, tr)
@@ -139,7 +139,7 @@ func (gep GeneratedEndpointPlugin) Connect(ec echo.Context, cnsiRecord api.CNSIR
 }
 
 // We support a basic mechanism for fetching the username of the user if configured
-func (gep GeneratedEndpointPlugin) fetchUsername(config pluginConfig, cnsiRecord *api.CNSIRecord, tr *api.TokenRecord) string {
+func (gep GeneratedEndpointPlugin) fetchUsername(config pluginConfig, cnsiRecord *interfaces.CNSIRecord, tr *interfaces.TokenRecord) string {
 	if len(config.UserInfoAPI) == 0 || len(config.UserInfoPath) == 0 {
 		// Not configured
 		return defaultTokenUsername
@@ -189,9 +189,9 @@ func getJSONValue(data map[string]interface{}, valuePath string) string {
 }
 
 // Info gets the info for the endpoint
-func (gep GeneratedEndpointPlugin) Info(apiEndpoint string, skipSSLValidation bool, caCert string) (api.CNSIRecord, interface{}, error) {
+func (gep GeneratedEndpointPlugin) Info(apiEndpoint string, skipSSLValidation bool) (interfaces.CNSIRecord, interface{}, error) {
 	var dummy interface{}
-	var newCNSI api.CNSIRecord
+	var newCNSI interfaces.CNSIRecord
 
 	newCNSI.CNSIType = gep.GetType()
 
@@ -202,13 +202,12 @@ func (gep GeneratedEndpointPlugin) Info(apiEndpoint string, skipSSLValidation bo
 
 	newCNSI.TokenEndpoint = apiEndpoint
 	newCNSI.AuthorizationEndpoint = apiEndpoint
-	newCNSI.CACert = caCert
 
 	return newCNSI, dummy, nil
 }
 
 // UpdateMetadata allows the pluigin to update the metadata for endpoints - not used in the generic case
-func (gep GeneratedEndpointPlugin) UpdateMetadata(info *api.Info, userGUID string, echoContext echo.Context) {
+func (gep GeneratedEndpointPlugin) UpdateMetadata(info *interfaces.Info, userGUID string, echoContext echo.Context) {
 	// no-op
 }
 
@@ -263,14 +262,14 @@ func createPluginForEndpointType(endpointType string) GeneratedEndpointPlugin {
 
 	gp := GeneratedPlugin{}
 	gp.initMethod = func() error { return nil }
-	gp.endpointPlugin = func() (api.EndpointPlugin, error) { return gep, nil }
-	gp.middlewarePlugin = func() (api.MiddlewarePlugin, error) { return nil, errors.New("Not implemented") }
-	gp.routePlugin = func() (api.RoutePlugin, error) { return nil, errors.New("Not implemented") }
+	gp.endpointPlugin = func() (interfaces.EndpointPlugin, error) { return gep, nil }
+	gp.middlewarePlugin = func() (interfaces.MiddlewarePlugin, error) { return nil, errors.New("Not implemented") }
+	gp.routePlugin = func() (interfaces.RoutePlugin, error) { return nil, errors.New("Not implemented") }
 
-	api.AddPlugin(
+	interfaces.AddPlugin(
 		endpointType,
 		[]string{},
-		func(portalProxy api.PortalProxy) (api.StratosPlugin, error) {
+		func(portalProxy interfaces.PortalProxy) (interfaces.StratosPlugin, error) {
 			log.Debugf("%s -- initializing", endpointType)
 			gep.portalProxy = portalProxy
 			return gp, nil

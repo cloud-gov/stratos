@@ -8,12 +8,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
-	"github.com/cloudfoundry/stratos/src/jetstream/api/config"
-	mock_api "github.com/cloudfoundry/stratos/src/jetstream/api/mock"
-	"github.com/cloudfoundry/stratos/src/jetstream/datastore"
-	"github.com/cloudfoundry/stratos/src/jetstream/repository/apikeys"
-	mock_apikeys "github.com/cloudfoundry/stratos/src/jetstream/repository/apikeys/mock"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/apikeys"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces/config"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/mock_interfaces"
 	"github.com/golang/mock/gomock"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
@@ -21,7 +19,7 @@ import (
 	sqlmock "gopkg.in/DATA-DOG/go-sqlmock.v1"
 )
 
-func makeMockServer(apiKeysRepo apikeys.Repository, mockStratosAuth api.StratosAuth) *portalProxy {
+func makeMockServer(apiKeysRepo apikeys.Repository, mockStratosAuth interfaces.StratosAuth) *portalProxy {
 	db, _, dberr := sqlmock.New()
 	if dberr != nil {
 		log.Panicf("an error '%s' was not expected when opening a stub database connection", dberr)
@@ -60,8 +58,8 @@ func Test_apiKeyMiddleware(t *testing.T) {
 	log.SetLevel(log.PanicLevel)
 
 	ctrl := gomock.NewController(t)
-	mockAPIRepo := mock_apikeys.NewMockRepository(ctrl)
-	mockStratosAuth := mock_api.NewMockStratosAuth(ctrl)
+	mockAPIRepo := apikeys.NewMockRepository(ctrl)
+	mockStratosAuth := mock_interfaces.NewMockStratosAuth(ctrl)
 	pp := makeMockServer(mockAPIRepo, mockStratosAuth)
 	defer ctrl.Finish()
 	defer pp.DatabaseConnectionPool.Close()
@@ -155,7 +153,7 @@ func Test_apiKeyMiddleware(t *testing.T) {
 					ctx, rec := makeNewRequest()
 					ctx.Request().Header.Add("Authentication", "Bearer "+apiKeySecret)
 
-					apiKey := &api.APIKey{
+					apiKey := &interfaces.APIKey{
 						UserGUID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
 						GUID:     "00000000-0000-0000-0000-000000000000",
 					}
@@ -191,7 +189,7 @@ func Test_apiKeyMiddleware(t *testing.T) {
 					ctx, rec := makeNewRequest()
 					ctx.Request().Header.Add("Authentication", "Bearer "+apiKeySecret)
 
-					apiKey := &api.APIKey{
+					apiKey := &interfaces.APIKey{
 						UserGUID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
 						GUID:     "00000000-0000-0000-0000-000000000000",
 					}
@@ -234,12 +232,12 @@ func Test_apiKeyMiddleware(t *testing.T) {
 			ctx, rec := makeNewRequest()
 			ctx.Request().Header.Add("Authentication", "Bearer "+apiKeySecret)
 
-			apiKey := &api.APIKey{
+			apiKey := &interfaces.APIKey{
 				UserGUID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
 				GUID:     "00000000-0000-0000-0000-000000000000",
 			}
 
-			connectedUser := &api.ConnectedUser{
+			connectedUser := &interfaces.ConnectedUser{
 				GUID:  apiKey.UserGUID,
 				Admin: false,
 			}
@@ -275,12 +273,12 @@ func Test_apiKeyMiddleware(t *testing.T) {
 			ctx, rec := makeNewRequest()
 			ctx.Request().Header.Add("Authentication", "Bearer "+apiKeySecret)
 
-			apiKey := &api.APIKey{
+			apiKey := &interfaces.APIKey{
 				UserGUID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
 				GUID:     "00000000-0000-0000-0000-000000000000",
 			}
 
-			connectedUser := &api.ConnectedUser{
+			connectedUser := &interfaces.ConnectedUser{
 				GUID:  apiKey.UserGUID,
 				Admin: true,
 			}
@@ -321,7 +319,7 @@ func Test_apiKeyMiddleware(t *testing.T) {
 			ctx, rec := makeNewRequest()
 			ctx.Request().Header.Add("Authentication", "Bearer "+apiKeySecret)
 
-			apiKey := &api.APIKey{
+			apiKey := &interfaces.APIKey{
 				UserGUID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
 				GUID:     "00000000-0000-0000-0000-000000000000",
 			}
@@ -386,7 +384,7 @@ func TestEndpointAdminMiddleware(t *testing.T) {
 	Convey("new request through endpointAdminMiddleware", t, func() {
 		// mock StratosAuthService
 		ctrl := gomock.NewController(t)
-		mockStratosAuth := mock_api.NewMockStratosAuth(ctrl)
+		mockStratosAuth := mock_interfaces.NewMockStratosAuth(ctrl)
 		defer ctrl.Finish()
 
 		// setup mock DB, PortalProxy and mock StratosAuthService
@@ -474,7 +472,7 @@ func TestEndpointUpdateDeleteMiddleware(t *testing.T) {
 	Convey("new request through endpointUpdateDeleteMiddleware", t, func() {
 		// mock StratosAuthService
 		ctrl := gomock.NewController(t)
-		mockStratosAuth := mock_api.NewMockStratosAuth(ctrl)
+		mockStratosAuth := mock_interfaces.NewMockStratosAuth(ctrl)
 		defer ctrl.Finish()
 
 		// setup mock DB, PortalProxy and mock StratosAuthService
@@ -496,13 +494,13 @@ func TestEndpointUpdateDeleteMiddleware(t *testing.T) {
 		mockEndpointAdmin2 := setupMockUser(mockUserGUID+"2", false, []string{"stratos.endpointadmin"})
 
 		adminEndpointArgs := createEndpointRowArgs("CF Endpoint 1", "https://127.0.0.1:50001", mockAuthEndpoint, mockTokenEndpoint, mockAdmin.ConnectedUser.GUID, mockAdmin.ConnectedUser.Admin)
-		adminEndpointRows := sqlmock.NewRows(datastore.GetColumnNamesForCSNIs()).AddRow(adminEndpointArgs...)
+		adminEndpointRows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(adminEndpointArgs...)
 
 		userEndpoint1Args := createEndpointRowArgs("CF Endpoint 2", "https://127.0.0.1:50002", mockAuthEndpoint, mockTokenEndpoint, mockEndpointAdmin1.ConnectedUser.GUID, mockEndpointAdmin1.ConnectedUser.Admin)
-		userEndpoint1Rows := sqlmock.NewRows(datastore.GetColumnNamesForCSNIs()).AddRow(userEndpoint1Args...)
+		userEndpoint1Rows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(userEndpoint1Args...)
 
 		userEndpoint2Args := createEndpointRowArgs("CF Endpoint 3", "https://127.0.0.1:50003", mockAuthEndpoint, mockTokenEndpoint, mockEndpointAdmin2.ConnectedUser.GUID, mockEndpointAdmin2.ConnectedUser.Admin)
-		userEndpoint2Rows := sqlmock.NewRows(datastore.GetColumnNamesForCSNIs()).AddRow(userEndpoint2Args...)
+		userEndpoint2Rows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(userEndpoint2Args...)
 
 		Convey("as admin", func() {
 			if errSession := pp.setSessionValues(ctx, mockAdmin.SessionValues); errSession != nil {

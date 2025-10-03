@@ -3,19 +3,18 @@ package datastore
 import (
 	"database/sql"
 
-	"github.com/pressly/goose"
+	"bitbucket.org/liamstask/goose/lib/goose"
 )
 
 func init() {
-	goose.AddMigration(Up20180813110300, nil)
-}
+	RegisterMigration(20180813110300, "RemoveStaleTokens", func(txn *sql.Tx, conf *goose.DBConf) error {
 
-func Up20180813110300(txn *sql.Tx) error {
-	removeStaleTokens := "DELETE FROM tokens WHERE token_type='cnsi' AND cnsi_guid NOT IN (SELECT guid FROM cnsis);"
-	_, err := txn.Exec(removeStaleTokens)
-	if err != nil {
-		return err
-	}
+		removeStaleTokens := "DELETE FROM tokens WHERE token_type='cnsi' AND cnsi_guid NOT IN (SELECT guid FROM cnsis);"
+		_, err := txn.Exec(removeStaleTokens)
+		if err != nil {
+			return err
+		}
 
-	return nil
+		return nil
+	})
 }

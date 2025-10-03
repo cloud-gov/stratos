@@ -4,7 +4,6 @@
 /tmp
 /out-tsc
 /out
-/jetstream
 
 # dependencies
 /node_modules
@@ -141,9 +140,6 @@ website/versioned_sidebars
 website/versions.json
 website/versions-repo
 
-# Npm package builds
-/npm_pkg
-
 /scan_tmp
 
 # Desktop app using Electron
@@ -153,8 +149,3 @@ website/versions-repo
 /electron/dev-ssl
 /electron/jetstream
 /electron/version
-
-# Packager
-/stratos-ui/
-/stratos-ui-packaged.zip
-

@@ -2,34 +2,30 @@ package datastore
 
 import (
 	"database/sql"
+	"strings"
 
-	"github.com/pressly/goose"
+	"bitbucket.org/liamstask/goose/lib/goose"
 )
 
 func init() {
-	goose.AddMigration(Up20180703142800, nil)
-}
+	RegisterMigration(20180703142800, "SetupSchema", func(txn *sql.Tx, conf *goose.DBConf) error {
+		binaryDataType := "BYTEA"
+		if strings.Contains(conf.Driver.Name, "mysql") {
+			binaryDataType = "BLOB"
+		}
 
-func Up20180703142800(txn *sql.Tx) error {
-	dialect := goose.GetDialect()
+		alterCnsis := "ALTER TABLE cnsis ADD COLUMN client_id VARCHAR(255) NOT NULL DEFAULT 'cf';"
+		_, err := txn.Exec(alterCnsis)
+		if err != nil {
+			return err
+		}
 
-	binaryDataType := "BYTEA"
+		alterCnsis = "ALTER TABLE cnsis ADD COLUMN client_secret " + binaryDataType + ";"
+		_, err = txn.Exec(alterCnsis)
+		if err != nil {
+			return err
+		}
 
-	if _, ok := dialect.(*goose.MySQLDialect); ok {
-		binaryDataType = "BLOB"
-	}
-
-	alterCnsis := "ALTER TABLE cnsis ADD COLUMN client_id VARCHAR(255) NOT NULL DEFAULT 'cf';"
-	_, err := txn.Exec(alterCnsis)
-	if err != nil {
-		return err
-	}
-
-	alterCnsis = "ALTER TABLE cnsis ADD COLUMN client_secret " + binaryDataType + ";"
-	_, err = txn.Exec(alterCnsis)
-	if err != nil {
-		return err
-	}
-
-	return nil
+		return nil
+	})
 }

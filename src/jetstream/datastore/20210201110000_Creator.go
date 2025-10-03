@@ -3,20 +3,18 @@ package datastore
 import (
 	"database/sql"
 
-	"github.com/pressly/goose"
+	"bitbucket.org/liamstask/goose/lib/goose"
 )
 
 func init() {
-	goose.AddMigration(Up20210201110000, nil)
-}
+	RegisterMigration(20210201110000, "Creator", func(txn *sql.Tx, conf *goose.DBConf) error {
+		alterCNSI := "ALTER TABLE cnsis ADD COLUMN creator VARCHAR(36) NOT NULL DEFAULT '';"
 
-func Up20210201110000(txn *sql.Tx) error {
-	alterCNSI := "ALTER TABLE cnsis ADD COLUMN creator VARCHAR(36) NOT NULL DEFAULT '';"
+		_, err := txn.Exec(alterCNSI)
+		if err != nil {
+			return err
+		}
 
-	_, err := txn.Exec(alterCNSI)
-	if err != nil {
-		return err
-	}
-
-	return nil
+		return nil
+	})
 }

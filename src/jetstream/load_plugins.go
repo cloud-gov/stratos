@@ -1,20 +1,20 @@
 package main
 
 import (
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/plugins/yamlgenerated"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/plugins/yamlgenerated"
 )
 
 func (pp *portalProxy) loadPlugins() {
 
-	pp.Plugins = make(map[string]api.StratosPlugin)
+	pp.Plugins = make(map[string]interfaces.StratosPlugin)
 	log.Info("Initialising plugins")
 
 	yamlgenerated.MakePluginsFromConfig()
 
-	for name := range api.PluginInits {
+	for name := range interfaces.PluginInits {
 		addPlugin(pp, name)
 	}
 }
@@ -26,7 +26,7 @@ func addPlugin(pp *portalProxy, name string) bool {
 	}
 
 	// Register this one if not already registered
-	reg, ok := api.PluginInits[name]
+	reg, ok := interfaces.PluginInits[name]
 	if !ok {
 		// Could not find plugin
 		log.Errorf("Could not find plugin: %s", name)
