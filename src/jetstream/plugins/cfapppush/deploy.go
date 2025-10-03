@@ -311,8 +311,13 @@ func getFolderSource(clientWebSocket *websocket.Conn, tempDir string, msg Socket
 		}
 
 		// Write the file
-		path := filepath.Join(tempDir, msg.Message)
-		err = os.WriteFile(path, p, 0644)
+		absPath, err := filepath.Abs(filepath.Join(tempDir, msg.Message))
+		// Ensure the resolved path is within tempDir to prevent directory traversal
+		tempDirAbs, err2 := filepath.Abs(tempDir)
+		if err != nil || err2 != nil || !strings.HasPrefix(absPath, tempDirAbs+string(os.PathSeparator)) {
+			return StratosProject{}, tempDir, errors.New("invalid file path")
+		}
+		err = os.WriteFile(absPath, p, 0644)
 		if err != nil {
 			return StratosProject{}, tempDir, err
 		}
