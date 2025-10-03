@@ -34,20 +34,17 @@ go env
 
 # Need to install swag in both cases
 echo "Generating OpenAPI documentation..."
-go install github.com/swaggo/swag/cmd/swag@v1.16.2
-swag init --parseDependency
+go install github.com/swaggo/swag/cmd/swag@v1.6.7
+swag init
 
 if [ "${ACTION}" == "build" ]; then
   echo "Building backend ..."
-  echo "Disk Space ${PWD}"
-  df -hT
-
   echo "Building version: ${VERSION}"
-  go build -ldflags -X=main.appVersion=${VERSION}
+  GO111MODULE=on go build -ldflags -X=main.appVersion=${VERSION}
   echo "Build complete ..."
 else
   echo "Running backend tests ..."
-  go test ./... -v -count=1 -coverprofile=coverage.txt -covermode=atomic
+  GO111MODULE=on go test ./... -v -count=1 -coverprofile=coverage.txt -covermode=atomic
 fi
 
 popd > /dev/null

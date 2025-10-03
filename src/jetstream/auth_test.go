@@ -18,17 +18,15 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
-	"github.com/cloudfoundry/stratos/src/jetstream/api/config"
-	mock_api "github.com/cloudfoundry/stratos/src/jetstream/api/mock"
-	"github.com/cloudfoundry/stratos/src/jetstream/crypto"
-	"github.com/cloudfoundry/stratos/src/jetstream/datastore"
-	"github.com/cloudfoundry/stratos/src/jetstream/testutils"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/crypto"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces/config"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/mock_interfaces"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
 const (
-	findUAATokenSQL = `SELECT token_guid, auth_token, refresh_token, token_expiry, auth_type, meta_data, enabled FROM tokens .*`
+	findUAATokenSQL = `SELECT token_guid, auth_token, refresh_token, token_expiry, auth_type, meta_data FROM tokens .*`
 )
 
 func TestLoginToUAA(t *testing.T) {
@@ -50,19 +48,19 @@ func TestLoginToUAA(t *testing.T) {
 			msBody(jsonMust(mockUAAResponse)))
 
 		defer mockUAA.Close()
-		pp.Config.ConsoleConfig = new(api.ConsoleConfig)
+		pp.Config.ConsoleConfig = new(interfaces.ConsoleConfig)
 		uaaURL, _ := url.Parse(mockUAA.URL)
 		pp.Config.ConsoleConfig.UAAEndpoint = uaaURL
 		pp.Config.ConsoleConfig.SkipSSLValidation = true
-		pp.Config.ConsoleConfig.AuthEndpointType = string(api.Remote)
+		pp.Config.ConsoleConfig.AuthEndpointType = string(interfaces.Remote)
 		//Init the auth service
-		err := pp.InitStratosAuthService(api.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
+		err := pp.InitStratosAuthService(interfaces.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
 		if err != nil {
 			log.Fatalf("Could not initialise auth service: %v", err)
 		}
 
 		mock.ExpectQuery(selectAnyFromTokens).
-			WillReturnRows(testutils.ExpectNoRows())
+			WillReturnRows(expectNoRows())
 
 		mock.ExpectExec(insertIntoTokens).
 			WillReturnResult(sqlmock.NewResult(1, 1))
@@ -105,9 +103,9 @@ func TestLocalLogin(t *testing.T) {
 		_, _, ctx, pp, db, mock := setupHTTPTest(req)
 		defer db.Close()
 
-		pp.Config.ConsoleConfig.AuthEndpointType = string(api.Local)
+		pp.Config.ConsoleConfig.AuthEndpointType = string(interfaces.Local)
 		//Init the auth service
-		err := pp.InitStratosAuthService(api.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
+		err := pp.InitStratosAuthService(interfaces.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
 		if err != nil {
 			log.Fatalf("Could not initialise auth service: %v", err)
 		}
@@ -163,9 +161,9 @@ func TestLocalLoginWithBadCredentials(t *testing.T) {
 		_, _, ctx, pp, db, mock := setupHTTPTest(req)
 		defer db.Close()
 
-		pp.Config.ConsoleConfig.AuthEndpointType = string(api.Local)
+		pp.Config.ConsoleConfig.AuthEndpointType = string(interfaces.Local)
 		//Init the auth service
-		err := pp.InitStratosAuthService(api.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
+		err := pp.InitStratosAuthService(interfaces.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
 		if err != nil {
 			log.Fatalf("Could not initialise auth service: %v", err)
 		}
@@ -219,11 +217,11 @@ func TestLocalLoginWithNoAdminScope(t *testing.T) {
 		mock.ExpectQuery(findPasswordHash).WithArgs(userGUID).WillReturnRows(rows)
 
 		//Configure the admin scope we expect the user to have
-		pp.Config.ConsoleConfig = new(api.ConsoleConfig)
+		pp.Config.ConsoleConfig = new(interfaces.ConsoleConfig)
 		pp.Config.ConsoleConfig.LocalUserScope = "stratos.admin"
-		pp.Config.ConsoleConfig.AuthEndpointType = string(api.Local)
+		pp.Config.ConsoleConfig.AuthEndpointType = string(interfaces.Local)
 		//Init the auth service
-		err := pp.InitStratosAuthService(api.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
+		err := pp.InitStratosAuthService(interfaces.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
 		if err != nil {
 			log.Fatalf("Could not initialise auth service: %v", err)
 		}
@@ -264,13 +262,13 @@ func TestLoginToUAAWithBadCreds(t *testing.T) {
 		)
 
 		defer mockUAA.Close()
-		pp.Config.ConsoleConfig = new(api.ConsoleConfig)
+		pp.Config.ConsoleConfig = new(interfaces.ConsoleConfig)
 		uaaURL, _ := url.Parse(mockUAA.URL)
 		pp.Config.ConsoleConfig.UAAEndpoint = uaaURL
 		pp.Config.ConsoleConfig.SkipSSLValidation = true
-		pp.Config.ConsoleConfig.AuthEndpointType = string(api.Remote)
+		pp.Config.ConsoleConfig.AuthEndpointType = string(interfaces.Remote)
 		//Init the auth service
-		err := pp.InitStratosAuthService(api.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
+		err := pp.InitStratosAuthService(interfaces.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
 		if err != nil {
 			log.Fatalf("Could not initialise auth service: %v", err)
 		}
@@ -280,7 +278,7 @@ func TestLoginToUAAWithBadCreds(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		someErr := err.(api.ErrHTTPShadow)
+		someErr := err.(interfaces.ErrHTTPShadow)
 
 		Convey("HTTP status code should be 401", func() {
 			So(someErr.HTTPError.Code, ShouldEqual, http.StatusUnauthorized)
@@ -310,20 +308,20 @@ func TestLoginToUAAButCantSaveToken(t *testing.T) {
 			msBody(jsonMust(mockUAAResponse)))
 
 		defer mockUAA.Close()
-		pp.Config.ConsoleConfig = new(api.ConsoleConfig)
+		pp.Config.ConsoleConfig = new(interfaces.ConsoleConfig)
 		uaaURL, _ := url.Parse(mockUAA.URL)
 		pp.Config.ConsoleConfig.UAAEndpoint = uaaURL
 		pp.Config.ConsoleConfig.SkipSSLValidation = true
-		pp.Config.ConsoleConfig.AuthEndpointType = string(api.Remote)
+		pp.Config.ConsoleConfig.AuthEndpointType = string(interfaces.Remote)
 		//Init the auth service
-		err := pp.InitStratosAuthService(api.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
+		err := pp.InitStratosAuthService(interfaces.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
 		if err != nil {
 			log.Fatalf("Could not initialise auth service: %v", err)
 		}
 
 		mock.ExpectQuery(selectAnyFromTokens).
 			// WithArgs(mockUserGUID).
-			WillReturnRows(testutils.ExpectNoRows())
+			WillReturnRows(sqlmock.NewRows([]string{"COUNT(*)"}).AddRow("0"))
 
 		// --- set up the database expectation for pp.saveAuthToken
 		mock.ExpectExec(insertIntoTokens).
@@ -367,7 +365,7 @@ func TestLoginToCNSI(t *testing.T) {
 		var mockURL *url.URL
 		mockURL, _ = url.Parse(mockUAA.URL)
 		stringCFType := "cf"
-		var mockCNSI = api.CNSIRecord{
+		var mockCNSI = interfaces.CNSIRecord{
 			GUID:                   mockCNSIGUID,
 			Name:                   "mockCF",
 			CNSIType:               "cf",
@@ -377,8 +375,8 @@ func TestLoginToCNSI(t *testing.T) {
 			DopplerLoggingEndpoint: mockDopplerEndpoint,
 		}
 
-		expectedCNSIRow := sqlmock.NewRows(datastore.GetColumnNamesForCSNIs()).
-			AddRow(mockCNSIGUID, mockCNSI.Name, stringCFType, mockUAA.URL, mockCNSI.AuthorizationEndpoint, mockCNSI.TokenEndpoint, mockCNSI.DopplerLoggingEndpoint, true, mockCNSI.ClientId, cipherClientSecret, true, "", "", "", "")
+		expectedCNSIRow := sqlmock.NewRows([]string{"guid", "name", "cnsi_type", "api_endpoint", "auth_endpoint", "token_endpoint", "doppler_logging_endpoint", "skip_ssl_validation", "client_id", "client_secret", "allow_sso", "sub_type", "meta_data", ""}).
+			AddRow(mockCNSIGUID, mockCNSI.Name, stringCFType, mockUAA.URL, mockCNSI.AuthorizationEndpoint, mockCNSI.TokenEndpoint, mockCNSI.DopplerLoggingEndpoint, true, mockCNSI.ClientId, cipherClientSecret, true, "", "", "")
 
 		mock.ExpectQuery(selectAnyFromCNSIs).
 			WithArgs(mockCNSIGUID).
@@ -394,10 +392,10 @@ func TestLoginToCNSI(t *testing.T) {
 		}
 
 		//Init the auth service
-		err := pp.InitStratosAuthService(api.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
+		err := pp.InitStratosAuthService(interfaces.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
 		if err != nil {
 			log.Warnf("%v, defaulting to auth type: remote", err)
-			err = pp.InitStratosAuthService(api.Remote)
+			err = pp.InitStratosAuthService(interfaces.Remote)
 			if err != nil {
 				log.Fatalf("Could not initialise auth service: %v", err)
 			}
@@ -405,7 +403,7 @@ func TestLoginToCNSI(t *testing.T) {
 
 		mock.ExpectQuery(selectAnyFromTokens).
 			WithArgs(mockCNSIGUID, mockUserGUID).
-			WillReturnRows(testutils.ExpectNoRows())
+			WillReturnRows(sqlmock.NewRows([]string{"COUNT(*)"}).AddRow("0"))
 
 		// Setup expectation that the CNSI token will get saved
 		//encryptedUAAToken, _ := tokens.EncryptToken(pp.Config.EncryptionKeyInBytes, mockUAAToken)
@@ -502,7 +500,7 @@ func TestLoginToCNSIWithMissingCreds(t *testing.T) {
 
 		defer mockUAA.Close()
 
-		expectedCNSIRow := testutils.GetEmptyCNSIRows("skip_ssl_validation", "client_id", "client_secret", "allow_sso", "sub_type", "meta_data", "creator", "ca_cert").
+		expectedCNSIRow := sqlmock.NewRows([]string{"guid", "name", "cnsi_type", "api_endpoint", "auth_endpoint", "token_endpoint", "doppler_logging_endpoint"}).
 			AddRow(mockCNSIGUID, "mockCF", "cf", mockUAA.URL, mockUAA.URL, mockUAA.URL, mockDopplerEndpoint)
 		mock.ExpectQuery(selectAnyFromCNSIs).
 			WithArgs(mockCNSIGUID).
@@ -545,7 +543,7 @@ func TestLoginToCNSIWithBadUserIDinSession(t *testing.T) {
 		var mockURL *url.URL
 		mockURL, _ = url.Parse(mockUAA.URL)
 		stringCFType := "cf"
-		var mockCNSI = api.CNSIRecord{
+		var mockCNSI = interfaces.CNSIRecord{
 			GUID:                  mockCNSIGUID,
 			Name:                  "mockCF",
 			CNSIType:              "cf",
@@ -554,7 +552,7 @@ func TestLoginToCNSIWithBadUserIDinSession(t *testing.T) {
 			TokenEndpoint:         mockUAA.URL,
 		}
 
-		expectedCNSIRow := testutils.GetEmptyCNSIRows("skip_ssl_validation", "client_id", "client_secret", "allow_sso", "sub_type", "meta_data", "creator", "ca_cert").
+		expectedCNSIRow := sqlmock.NewRows([]string{"guid", "name", "cnsi_type", "api_endpoint", "auth_endpoint", "token_endpoint", "doppler_logging_endpoint"}).
 			AddRow(mockCNSIGUID, mockCNSI.Name, stringCFType, mockUAA.URL, mockCNSI.AuthorizationEndpoint, mockCNSI.TokenEndpoint, mockDopplerEndpoint)
 		mock.ExpectQuery(selectAnyFromCNSIs).
 			WithArgs(mockCNSIGUID).
@@ -586,7 +584,7 @@ func TestLoginToCNSIWithUserEndpointsEnabled(t *testing.T) {
 	Convey("Login to CNSI with UserEndpoints enabled", t, func() {
 		// mock StratosAuthService
 		ctrl := gomock.NewController(t)
-		mockStratosAuth := mock_api.NewMockStratosAuth(ctrl)
+		mockStratosAuth := mock_interfaces.NewMockStratosAuth(ctrl)
 		defer ctrl.Finish()
 
 		// setup mock DB, PortalProxy and mock StratosAuthService
@@ -608,7 +606,7 @@ func TestLoginToCNSIWithUserEndpointsEnabled(t *testing.T) {
 
 		// setup everything to mock a connection to an admin endpoint
 		adminEndpointArgs := createEndpointRowArgs("CF Endpoint 1", mockUAA.URL, mockUAA.URL, mockUAA.URL, mockAdmin.ConnectedUser.GUID, mockAdmin.ConnectedUser.Admin)
-		adminEndpointRows := sqlmock.NewRows(datastore.GetColumnNamesForCSNIs()).AddRow(adminEndpointArgs...)
+		adminEndpointRows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(adminEndpointArgs...)
 
 		res := httptest.NewRecorder()
 		req := setupMockReq("POST", "", map[string]string{
@@ -620,7 +618,7 @@ func TestLoginToCNSIWithUserEndpointsEnabled(t *testing.T) {
 
 		// setup everything to mock a connection to an user endpoint
 		userEndpoint1Args := createEndpointRowArgs("CF Endpoint 2", mockUAA.URL, mockUAA.URL, mockUAA.URL, mockEndpointAdmin1.ConnectedUser.GUID, mockEndpointAdmin1.ConnectedUser.Admin)
-		userEndpoint1Rows := sqlmock.NewRows(datastore.GetColumnNamesForCSNIs()).AddRow(userEndpoint1Args...)
+		userEndpoint1Rows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(userEndpoint1Args...)
 
 		res = httptest.NewRecorder()
 		req = setupMockReq("POST", "", map[string]string{
@@ -632,7 +630,7 @@ func TestLoginToCNSIWithUserEndpointsEnabled(t *testing.T) {
 
 		// setup everything to mock a connection to a different user endpoint
 		userEndpoint2Args := createEndpointRowArgs("CF Endpoint 3", mockUAA.URL, mockUAA.URL, mockUAA.URL, mockEndpointAdmin2.ConnectedUser.GUID, mockEndpointAdmin2.ConnectedUser.Admin)
-		userEndpoint2Rows := sqlmock.NewRows(datastore.GetColumnNamesForCSNIs()).AddRow(userEndpoint2Args...)
+		userEndpoint2Rows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(userEndpoint2Args...)
 
 		res = httptest.NewRecorder()
 		req = setupMockReq("POST", "", map[string]string{
@@ -642,7 +640,7 @@ func TestLoginToCNSIWithUserEndpointsEnabled(t *testing.T) {
 		})
 		_, ctxConnectToUser2 := setupEchoContext(res, req)
 
-		adminAndUserEndpointRows := sqlmock.NewRows(datastore.GetColumnNamesForCSNIs()).AddRow(adminEndpointArgs...).AddRow(userEndpoint1Args...)
+		adminAndUserEndpointRows := sqlmock.NewRows(rowFieldsForCNSI).AddRow(adminEndpointArgs...).AddRow(userEndpoint1Args...)
 
 		Convey("As admin", func() {
 
@@ -657,7 +655,7 @@ func TestLoginToCNSIWithUserEndpointsEnabled(t *testing.T) {
 
 				mock.ExpectQuery(selectAnyFromTokens).
 					WithArgs(adminEndpointArgs[0], mockAdmin.ConnectedUser.GUID).
-					WillReturnRows(testutils.ExpectNoRows())
+					WillReturnRows(sqlmock.NewRows([]string{"COUNT(*)"}).AddRow("0"))
 
 				mock.ExpectExec(insertIntoTokens).
 					WillReturnResult(sqlmock.NewResult(1, 1))
@@ -704,7 +702,7 @@ func TestLoginToCNSIWithUserEndpointsEnabled(t *testing.T) {
 
 				mock.ExpectQuery(selectAnyFromTokens).
 					WithArgs(userEndpoint1Args[0], mockEndpointAdmin1.ConnectedUser.GUID).
-					WillReturnRows(testutils.ExpectNoRows())
+					WillReturnRows(sqlmock.NewRows([]string{"COUNT(*)"}).AddRow("0"))
 
 				mock.ExpectExec(insertIntoTokens).
 					WillReturnResult(sqlmock.NewResult(1, 1))
@@ -733,8 +731,8 @@ func TestLoginToCNSIWithUserEndpointsEnabled(t *testing.T) {
 				// connected system endpoint found
 				mock.ExpectQuery(selectAnyFromTokens).
 					WithArgs(adminEndpointArgs[0], mockEndpointAdmin1.ConnectedUser.GUID, mockAdminGUID).
-					WillReturnRows(testutils.GetEmptyTokenRows().
-						AddRow("", mockUAAToken, mockUAAToken, time.Now().Add(-time.Hour).Unix(), false, "", "", "", nil, false))
+					WillReturnRows(sqlmock.NewRows([]string{"token_guid", "auth_token", "refresh_token", "token_expiry", "disconnected", "auth_type", "meta_data", "user_guid", "linked_token"}).
+						AddRow("", mockUAAToken, mockUAAToken, time.Now().Add(-time.Hour).Unix(), false, "", "", "", nil))
 
 				// remove other connection, since it has the same api url
 				mock.ExpectExec(deleteTokens).
@@ -743,7 +741,7 @@ func TestLoginToCNSIWithUserEndpointsEnabled(t *testing.T) {
 
 				mock.ExpectQuery(selectAnyFromTokens).
 					WithArgs(userEndpoint1Args[0], mockEndpointAdmin1.ConnectedUser.GUID).
-					WillReturnRows(testutils.ExpectNoRows())
+					WillReturnRows(sqlmock.NewRows([]string{"COUNT(*)"}).AddRow("0"))
 
 				mock.ExpectExec(insertIntoTokens).
 					WillReturnResult(sqlmock.NewResult(1, 1))
@@ -770,7 +768,7 @@ func TestLoginToCNSIWithUserEndpointsEnabled(t *testing.T) {
 
 				mock.ExpectQuery(selectAnyFromTokens).
 					WithArgs(adminEndpointArgs[0], mockEndpointAdmin1.ConnectedUser.GUID).
-					WillReturnRows(testutils.ExpectNoRows())
+					WillReturnRows(sqlmock.NewRows([]string{"COUNT(*)"}).AddRow("0"))
 
 				mock.ExpectExec(insertIntoTokens).
 					WillReturnResult(sqlmock.NewResult(1, 1))
@@ -818,12 +816,12 @@ func TestLogout(t *testing.T) {
 		res, _, ctx, pp, db, _ := setupHTTPTest(req)
 		defer db.Close()
 
-		pp.Config.ConsoleConfig.AuthEndpointType = string(api.Local)
+		pp.Config.ConsoleConfig.AuthEndpointType = string(interfaces.Local)
 		//Init the auth service
-		err := pp.InitStratosAuthService(api.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
+		err := pp.InitStratosAuthService(interfaces.AuthEndpointTypes[pp.Config.ConsoleConfig.AuthEndpointType])
 		if err != nil {
 			log.Warnf("%v, defaulting to auth type: remote", err)
-			err = pp.InitStratosAuthService(api.Remote)
+			err = pp.InitStratosAuthService(interfaces.Remote)
 			if err != nil {
 				log.Fatalf("Could not initialise auth service: %v", err)
 			}
@@ -851,11 +849,11 @@ func TestSaveCNSITokenWithInvalidInput(t *testing.T) {
 		badCNSIID := ""
 		badAuthToken := ""
 		badRefreshToken := ""
-		badUserInfo := api.JWTUserTokenInfo{
+		badUserInfo := interfaces.JWTUserTokenInfo{
 			UserGUID:    "",
 			TokenExpiry: 0,
 		}
-		emptyTokenRecord := api.TokenRecord{}
+		emptyTokenRecord := interfaces.TokenRecord{}
 
 		req := setupMockReq("POST", "", map[string]string{})
 		_, _, _, pp, db, mock := setupHTTPTest(req)
@@ -889,7 +887,7 @@ func TestSetUAATokenRecord(t *testing.T) {
 	Convey("Test saving a UAA Token record with a DB exception", t, func() {
 
 		fakeKey := "fake-guid"
-		fakeTr := api.TokenRecord{}
+		fakeTr := interfaces.TokenRecord{}
 
 		req := setupMockReq("POST", "", map[string]string{})
 		_, _, _, pp, db, mock := setupHTTPTest(req)
@@ -986,7 +984,7 @@ func TestVerifySession(t *testing.T) {
 		res, _, ctx, pp, db, mock := setupHTTPTest(req)
 		defer db.Close()
 
-		if e := pp.InitStratosAuthService(api.Remote); e != nil {
+		if e := pp.InitStratosAuthService(interfaces.Remote); e != nil {
 			log.Fatalf("Could not initialise auth service: %v", e)
 		}
 
@@ -1001,9 +999,8 @@ func TestVerifySession(t *testing.T) {
 
 		mockTokenGUID := "mock-token-guid"
 		encryptedUAAToken, _ := crypto.EncryptToken(pp.Config.EncryptionKeyInBytes, mockUAAToken)
-		// &tokenGUID, &ciphertextAuthToken, &ciphertextRefreshToken, &tokenExpiry, &authType, &metadata
-		expectedTokensRow := testutils.GetEmptyTokenRows("disconnected", "user_guid", "linked_token").
-			AddRow(mockTokenGUID, encryptedUAAToken, encryptedUAAToken, mockTokenExpiry, "oauth", "", true)
+		expectedTokensRow := sqlmock.NewRows([]string{"token_guid", "auth_token", "refresh_token", "token_expiry", "auth_type", "meta_data"}).
+			AddRow(mockTokenGUID, encryptedUAAToken, encryptedUAAToken, mockTokenExpiry, "oauth", "")
 
 		mock.ExpectQuery(selectAnyFromTokens).
 			WithArgs(mockUserGUID).
@@ -1013,8 +1010,8 @@ func TestVerifySession(t *testing.T) {
 			AddRow(mockProxyVersion)
 		mock.ExpectQuery(getDbVersion).WillReturnRows(expectVersionRow)
 
-		rs := testutils.GetEmptyTokenRows("disconnected", "user_guid", "linked_token").
-			AddRow(mockTokenGUID, encryptedUAAToken, encryptedUAAToken, mockTokenExpiry, "oauth", "", true)
+		rs := sqlmock.NewRows([]string{"token_guid", "auth_token", "refresh_token", "token_expiry", "auth_type", "meta_data"}).
+			AddRow(mockTokenGUID, encryptedUAAToken, encryptedUAAToken, mockTokenExpiry, "oauth", "")
 		mock.ExpectQuery(findUAATokenSQL).
 			WillReturnRows(rs)
 
@@ -1058,7 +1055,7 @@ func TestVerifySessionNoDate(t *testing.T) {
 		defer db.Close()
 
 		//Init the auth service
-		err := pp.InitStratosAuthService(api.Local)
+		err := pp.InitStratosAuthService(interfaces.Local)
 		if err != nil {
 			log.Fatalf("Could not initialise auth service: %v", err)
 		}
@@ -1079,7 +1076,7 @@ func TestVerifySessionNoDate(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		var expectedBody = `{"status":"error","error":"could not find session date","data":null}`
+		var expectedBody = `{"status":"error","error":"Could not find session date","data":null}`
 		Convey("Should contain expected body", func() {
 			So(res, ShouldNotBeNil)
 			So(strings.TrimSpace(res.Body.String()), ShouldEqual, expectedBody)
@@ -1101,7 +1098,7 @@ func TestVerifySessionExpired(t *testing.T) {
 		res, _, ctx, pp, db, mock := setupHTTPTest(req)
 		defer db.Close()
 
-		if e := pp.InitStratosAuthService(api.Remote); e != nil {
+		if e := pp.InitStratosAuthService(interfaces.Remote); e != nil {
 			log.Fatalf("Could not initialise auth service: %v", e)
 		}
 
@@ -1111,7 +1108,7 @@ func TestVerifySessionExpired(t *testing.T) {
 		sessionValues["exp"] = time.Now().Add(-time.Hour).Unix()
 
 		mock.ExpectQuery(selectAnyFromTokens).
-			WillReturnRows(testutils.GetEmptyTokenRows("token_guid", "auth_type", "meta_data", "user_guid", "linked_token", "enabled"))
+			WillReturnRows(sqlmock.NewRows([]string{"auth_token", "refresh_token", "token_expiry", "disconnected"}))
 		mock.ExpectExec(insertIntoTokens).
 			WillReturnError(errors.New("Session has expired"))
 
@@ -1120,7 +1117,7 @@ func TestVerifySessionExpired(t *testing.T) {
 		}
 
 		mock.ExpectQuery(selectAnyFromTokens).
-			WillReturnRows(testutils.GetEmptyTokenRows("token_guid", "auth_type", "meta_data", "user_guid", "linked_token", "enabled").
+			WillReturnRows(sqlmock.NewRows([]string{"auth_token", "refresh_token", "token_expiry", "disconnected"}).
 				AddRow(mockUAAToken, mockUAAToken, sessionValues["exp"], false))
 		err := pp.verifySession(ctx)
 
@@ -1128,7 +1125,7 @@ func TestVerifySessionExpired(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		var expectedBody = `{"status":"error","error":"could not verify user","data":null}`
+		var expectedBody = `{"status":"error","error":"Could not verify user","data":null}`
 		Convey("Should contain expected body", func() {
 			So(res, ShouldNotBeNil)
 			So(strings.TrimSpace(res.Body.String()), ShouldEqual, expectedBody)

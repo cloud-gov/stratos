@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -16,8 +15,8 @@ import (
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
-	"github.com/cloudfoundry/stratos/src/jetstream/api/config"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces/config"
 )
 
 const cfSessionCookieName = "JSESSIONID"
@@ -37,22 +36,19 @@ const APIKeyHeader = "Authentication"
 // APIKeyAuthScheme - API key authentication scheme
 const APIKeyAuthScheme = "Bearer"
 
-func handleSessionError(config api.PortalConfig, c echo.Context, err error, doNotLog bool, msg string) error {
+func handleSessionError(config interfaces.PortalConfig, c echo.Context, err error, doNotLog bool, msg string) error {
 	log.Debug("handleSessionError")
 
-	var netOpErr *net.OpError
-	if errors.As(err, &netOpErr) {
-		if netOpErr.Op == "dial" && netOpErr.Net == "tcp" {
-			return api.NewHTTPShadowError(
-				http.StatusServiceUnavailable,
-				"Service is currently unavailable",
-				"Service is currently unavailable: %v", err,
-			)
-		}
+	if strings.Contains(err.Error(), "dial tcp") {
+		return interfaces.NewHTTPShadowError(
+			http.StatusServiceUnavailable,
+			"Service is currently unavailable",
+			"Service is currently unavailable: %v", err,
+		)
 	}
 
 	if doNotLog {
-		return api.NewHTTPShadowError(
+		return interfaces.NewHTTPShadowError(
 			http.StatusUnauthorized,
 			msg, msg,
 		)
@@ -60,7 +56,7 @@ func handleSessionError(config api.PortalConfig, c echo.Context, err error, doNo
 
 	var logMessage = msg + ": %v"
 
-	return api.NewHTTPShadowError(
+	return interfaces.NewHTTPShadowError(
 		http.StatusUnauthorized,
 		msg, logMessage, err,
 	)
@@ -174,7 +170,7 @@ func (p *portalProxy) xsrfMiddlewareWithConfig(config MiddlewareConfig) echo.Mid
 					errMsg = "XSRF Token was not supplied in the header"
 				}
 			}
-			return api.NewHTTPShadowError(
+			return interfaces.NewHTTPShadowError(
 				http.StatusUnauthorized,
 				"XSRF Token could not be found or does not match",
 				"XSRF Token error: %s", errMsg,
@@ -208,7 +204,7 @@ func (p *portalProxy) urlCheckMiddleware(h echo.HandlerFunc) echo.HandlerFunc {
 		requestPath := c.Request().URL.Path
 		if strings.Contains(requestPath, "../") {
 			err := "Invalid path"
-			return api.NewHTTPShadowError(
+			return interfaces.NewHTTPShadowError(
 				http.StatusBadRequest,
 				err,
 				err,
@@ -247,7 +243,7 @@ func (p *portalProxy) adminMiddleware(h echo.HandlerFunc) echo.HandlerFunc {
 				return c.NoContent(http.StatusUnauthorized)
 			}
 
-			if u.Admin {
+			if u.Admin == true {
 				return h(c)
 			}
 		}
@@ -273,7 +269,7 @@ func (p *portalProxy) endpointAdminMiddleware(h echo.HandlerFunc) echo.HandlerFu
 
 		endpointAdmin := strings.Contains(strings.Join(u.Scopes, ""), "stratos.endpointadmin")
 
-		if !endpointAdmin && !u.Admin {
+		if endpointAdmin == false && u.Admin == false {
 			return handleSessionError(p.Config, c, errors.New("Unauthorized"), false, "You must be a Stratos admin or endpointAdmin to access this API")
 		}
 
@@ -321,12 +317,12 @@ func errorLoggingMiddleware(h echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		log.Debug("errorLoggingMiddleware")
 		err := h(c)
-		if shadowError, ok := err.(api.ErrHTTPShadow); ok {
+		if shadowError, ok := err.(interfaces.ErrHTTPShadow); ok {
 			if len(shadowError.LogMessage) > 0 {
 				log.Error(shadowError.LogMessage)
 			}
 			return shadowError.HTTPError
-		} else if jetstreamError, ok := err.(api.JetstreamError); ok {
+		} else if jetstreamError, ok := err.(interfaces.JetstreamError); ok {
 			return jetstreamError.HTTPErrorInContext(c)
 		}
 
@@ -370,7 +366,7 @@ func getAPIKeyFromHeader(c echo.Context) (string, error) {
 		return header[l+1:], nil
 	}
 
-	return "", errors.New("no API key in the header")
+	return "", errors.New("No API key in the header")
 }
 
 func (p *portalProxy) apiKeyMiddleware(h echo.HandlerFunc) echo.HandlerFunc {
@@ -433,5 +429,5 @@ func (p *portalProxy) apiKeyMiddleware(h echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func (p *portalProxy) apiKeySkipper(c echo.Context) bool {
-	return c.Get(APIKeySkipperContextKey) != nil && c.Get(APIKeySkipperContextKey).(bool)
+	return c.Get(APIKeySkipperContextKey) != nil && c.Get(APIKeySkipperContextKey).(bool) == true
 }

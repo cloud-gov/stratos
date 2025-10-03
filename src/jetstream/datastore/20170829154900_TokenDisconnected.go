@@ -3,20 +3,18 @@ package datastore
 import (
 	"database/sql"
 
-	"github.com/pressly/goose"
+	"bitbucket.org/liamstask/goose/lib/goose"
 )
 
 func init() {
-	goose.AddMigration(Up20170829154900, nil)
-}
+	RegisterMigration(20170829154900, "TokenDisconnected", func(txn *sql.Tx, conf *goose.DBConf) error {
+		alterTokens := "ALTER TABLE tokens ADD COLUMN disconnected boolean NOT NULL DEFAULT FALSE;"
 
-func Up20170829154900(txn *sql.Tx) error {
-	alterTokens := "ALTER TABLE tokens ADD COLUMN disconnected boolean NOT NULL DEFAULT FALSE;"
+		_, err := txn.Exec(alterTokens)
+		if err != nil {
+			return err
+		}
 
-	_, err := txn.Exec(alterTokens)
-	if err != nil {
-		return err
-	}
-
-	return nil
+		return nil
+	})
 }

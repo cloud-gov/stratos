@@ -35,7 +35,7 @@ describe('Metrics', () => {
     register.form.fill({
       name: 'MetricsTest',
       url: spoofMetricsEndpoint,
-      skipssl: true
+      skipsll: true
     });
 
     register.form.getControlsMap().then(fields => {

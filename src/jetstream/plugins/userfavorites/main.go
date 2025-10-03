@@ -3,39 +3,39 @@ package userfavorites
 import (
 	"errors"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
-	"github.com/cloudfoundry/stratos/src/jetstream/plugins/userfavorites/userfavoritesstore"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/plugins/userfavorites/userfavoritesstore"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 	"github.com/labstack/echo/v4"
 )
 
 // Module init will register plugin
 func init() {
-	api.AddPlugin("userfavorites", nil, Init)
+	interfaces.AddPlugin("userfavorites", nil, Init)
 }
 
 // UserFavorites stores user favorites
 type UserFavorites struct {
-	portalProxy api.PortalProxy
+	portalProxy interfaces.PortalProxy
 }
 
 // Init creates a new UserFavorites
-func Init(portalProxy api.PortalProxy) (api.StratosPlugin, error) {
+func Init(portalProxy interfaces.PortalProxy) (interfaces.StratosPlugin, error) {
 	userfavoritesstore.InitRepositoryProvider(portalProxy.GetConfig().DatabaseProviderName)
 	return &UserFavorites{portalProxy: portalProxy}, nil
 }
 
 // GetMiddlewarePlugin gets the middleware plugin for this plugin
-func (uf *UserFavorites) GetMiddlewarePlugin() (api.MiddlewarePlugin, error) {
+func (uf *UserFavorites) GetMiddlewarePlugin() (interfaces.MiddlewarePlugin, error) {
 	return nil, errors.New("Not implemented")
 }
 
 // GetEndpointPlugin gets the endpoint plugin for this plugin
-func (uf *UserFavorites) GetEndpointPlugin() (api.EndpointPlugin, error) {
+func (uf *UserFavorites) GetEndpointPlugin() (interfaces.EndpointPlugin, error) {
 	return nil, errors.New("Not implemented")
 }
 
 // GetRoutePlugin gets the route plugin for this plugin
-func (uf *UserFavorites) GetRoutePlugin() (api.RoutePlugin, error) {
+func (uf *UserFavorites) GetRoutePlugin() (interfaces.RoutePlugin, error) {
 	return uf, nil
 }
 
