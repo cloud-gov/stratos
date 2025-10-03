@@ -9,7 +9,7 @@ import (
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 )
 
 type StatusResponse struct {
@@ -72,7 +72,7 @@ func (invite *UserInvite) configure(c echo.Context) error {
 	clientSecret := c.FormValue("client_secret")
 
 	if len(clientID) == 0 || len(clientSecret) == 0 {
-		return api.NewHTTPShadowError(
+		return interfaces.NewHTTPShadowError(
 			http.StatusBadRequest,
 			"Invalid request - must specify client ID and client secret",
 			"Invalid request - must specify client ID and client secret",
@@ -88,7 +88,7 @@ func (invite *UserInvite) configure(c echo.Context) error {
 	scopes := strings.Split(uaaRecord.Scope, " ")
 	if !arrayContainsString(scopes, scimInviteScope) || !arrayContainsString(scopes, cloudControllerAdminScope) {
 		// Doesn't have the scopes needed
-		return api.NewHTTPShadowError(
+		return interfaces.NewHTTPShadowError(
 			http.StatusBadRequest,
 			"Specified Client does not have the required scopes",
 			"Specified Client does not have the required scopes",

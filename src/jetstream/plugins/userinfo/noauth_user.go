@@ -5,16 +5,16 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 )
 
 // NoAuthUserInfo is a plugin for no authentication
 type NoAuthUserInfo struct {
-	portalProxy api.PortalProxy
+	portalProxy interfaces.PortalProxy
 }
 
 // InitNoAuthUserInfo creates a new no auth user info provider
-func InitNoAuthUserInfo(portalProxy api.PortalProxy) Provider {
+func InitNoAuthUserInfo(portalProxy interfaces.PortalProxy) Provider {
 	return &NoAuthUserInfo{portalProxy: portalProxy}
 }
 
@@ -24,7 +24,7 @@ func (userInfo *NoAuthUserInfo) GetUserInfo(id string) (int, []byte, *http.Heade
 	uaaUser := &uaaUser{
 		ID:       id,
 		Origin:   "noauth",
-		Username: api.DefaultAdminUserName,
+		Username: interfaces.DefaultAdminUserName,
 	}
 
 	emails := make([]uaaUserEmail, 0)

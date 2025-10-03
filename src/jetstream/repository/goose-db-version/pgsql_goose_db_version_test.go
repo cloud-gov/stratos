@@ -2,14 +2,14 @@ package goosedbversion
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"gopkg.in/DATA-DOG/go-sqlmock.v1"
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
-	"github.com/cloudfoundry/stratos/src/jetstream/custom_errors"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 )
 
 func TestPgSQLGooseDB(t *testing.T) {
@@ -44,7 +44,7 @@ func TestPgSQLGooseDB(t *testing.T) {
 		defer db.Close()
 
 		// General setup
-		expectedVersionRecord := api.GooseDBVersionRecord{VersionID: mockVersionID}
+		expectedVersionRecord := interfaces.GooseDBVersionRecord{VersionID: mockVersionID}
 
 		Convey("if one exists", func() {
 
@@ -63,6 +63,9 @@ func TestPgSQLGooseDB(t *testing.T) {
 		})
 
 		Convey("if one doesn't exist", func() {
+
+			expectedErrorMessage := "No database versions found"
+
 			// Database setup
 			rs := sqlmock.NewRows(rowFieldsForVersionID)
 			mock.ExpectQuery(selectFromDBVersionWhere).
@@ -71,7 +74,7 @@ func TestPgSQLGooseDB(t *testing.T) {
 			Convey("there should be an error", func() {
 				repository, _ := NewPostgresGooseDBVersionRepository(db)
 				_, err := repository.GetCurrentVersion()
-				So(err, ShouldResemble, custom_errors.ErrNoDatabaseVersionsFound)
+				So(err, ShouldResemble, errors.New(expectedErrorMessage))
 
 				dberr := mock.ExpectationsWereMet()
 				So(dberr, ShouldBeNil)
@@ -79,6 +82,9 @@ func TestPgSQLGooseDB(t *testing.T) {
 		})
 
 		Convey("if there is a problem talking to the database", func() {
+
+			expectedErrorMessage := fmt.Sprintf("Error trying to get current database version: %s", "error")
+
 			// Database setup
 			mock.ExpectQuery(selectFromDBVersionWhere).
 				WillReturnError(errors.New("error"))
@@ -86,7 +92,7 @@ func TestPgSQLGooseDB(t *testing.T) {
 			Convey("there should be an error", func() {
 				repository, _ := NewPostgresGooseDBVersionRepository(db)
 				_, err := repository.GetCurrentVersion()
-				So(err, ShouldResemble, custom_errors.ErrGettingCurrentVersion(errors.New("error")))
+				So(err, ShouldResemble, errors.New(expectedErrorMessage))
 
 				dberr := mock.ExpectationsWereMet()
 				So(dberr, ShouldBeNil)

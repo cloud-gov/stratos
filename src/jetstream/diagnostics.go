@@ -6,13 +6,13 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
-	goosedbversion "github.com/cloudfoundry/stratos/src/jetstream/repository/goose-db-version"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/goose-db-version"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 )
 
 func (p *portalProxy) StoreDiagnostics() {
 
-	diagnostics := &api.Diagnostics{}
+	diagnostics := &interfaces.Diagnostics{}
 
 	log.Info("Storing Diagnostics")
 
@@ -20,7 +20,10 @@ func (p *portalProxy) StoreDiagnostics() {
 	cmdName := "git"
 	cmdArgs := []string{"version"}
 	if cmdOut, err := exec.Command(cmdName, cmdArgs...).Output(); err == nil {
-		diagnostics.GitClientVersion = strings.TrimPrefix(strings.TrimSpace(string(cmdOut)), "git version ")
+		diagnostics.GitClientVersion = strings.TrimSpace(string(cmdOut))
+		if strings.HasPrefix(diagnostics.GitClientVersion, "git version ") {
+			diagnostics.GitClientVersion = diagnostics.GitClientVersion[12:]
+		}
 	}
 
 	if p.DatabaseConnectionPool != nil {

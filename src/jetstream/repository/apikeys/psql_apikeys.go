@@ -8,9 +8,9 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
-	"github.com/cloudfoundry/stratos/src/jetstream/crypto"
-	"github.com/cloudfoundry/stratos/src/jetstream/datastore"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/crypto"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/datastore"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -59,7 +59,7 @@ func InitRepositoryProvider(databaseProvider string) {
 }
 
 // AddAPIKey - Add a new API key to the datastore.
-func (p *PgsqlAPIKeysRepository) AddAPIKey(userID string, comment string) (*api.APIKey, error) {
+func (p *PgsqlAPIKeysRepository) AddAPIKey(userID string, comment string) (*interfaces.APIKey, error) {
 	log.Debug("AddAPIKey")
 
 	var err error
@@ -88,7 +88,7 @@ func (p *PgsqlAPIKeysRepository) AddAPIKey(userID string, comment string) (*api.
 		return nil, fmt.Errorf("AddAPIKey: %v", err)
 	}
 
-	apiKey := &api.APIKey{
+	apiKey := &interfaces.APIKey{
 		GUID:     keyGUID,
 		Secret:   keySecret,
 		UserGUID: userID,
@@ -99,10 +99,10 @@ func (p *PgsqlAPIKeysRepository) AddAPIKey(userID string, comment string) (*api.
 }
 
 // GetAPIKeyBySecret - gets user ID for an API key
-func (p *PgsqlAPIKeysRepository) GetAPIKeyBySecret(keySecret string) (*api.APIKey, error) {
+func (p *PgsqlAPIKeysRepository) GetAPIKeyBySecret(keySecret string) (*interfaces.APIKey, error) {
 	log.Debug("GetAPIKeyBySecret")
 
-	var apiKey api.APIKey
+	var apiKey interfaces.APIKey
 
 	err := p.db.QueryRow(sqlQueries.GetAPIKeyBySecret, keySecret).Scan(
 		&apiKey.GUID,
@@ -119,7 +119,7 @@ func (p *PgsqlAPIKeysRepository) GetAPIKeyBySecret(keySecret string) (*api.APIKe
 }
 
 // ListAPIKeys - list API keys for a given user GUID
-func (p *PgsqlAPIKeysRepository) ListAPIKeys(userID string) ([]api.APIKey, error) {
+func (p *PgsqlAPIKeysRepository) ListAPIKeys(userID string) ([]interfaces.APIKey, error) {
 	log.Debug("ListAPIKeys")
 
 	rows, err := p.db.Query(sqlQueries.ListAPIKeys, userID)
@@ -128,9 +128,9 @@ func (p *PgsqlAPIKeysRepository) ListAPIKeys(userID string) ([]api.APIKey, error
 		return nil, err
 	}
 
-	result := []api.APIKey{}
+	result := []interfaces.APIKey{}
 	for rows.Next() {
-		var apiKey api.APIKey
+		var apiKey interfaces.APIKey
 		err = rows.Scan(&apiKey.GUID, &apiKey.UserGUID, &apiKey.Comment, &apiKey.LastUsed)
 		if err != nil {
 			log.Errorf("Scan: %v", err)

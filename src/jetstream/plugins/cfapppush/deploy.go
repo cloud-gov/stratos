@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
@@ -91,7 +92,7 @@ func (cfAppPush *CFAppPush) deploy(echoContext echo.Context) error {
 	userGUID := echoContext.Get("user_id").(string)
 
 	log.Debug("UpgradeToWebSocket")
-	clientWebSocket, pingTicker, err := api.UpgradeToWebSocket(echoContext)
+	clientWebSocket, pingTicker, err := interfaces.UpgradeToWebSocket(echoContext)
 	log.Debug("UpgradeToWebSocket done")
 	if err != nil {
 		log.Errorf("Upgrade to websocket failed due to: %+v", err)
@@ -119,12 +120,7 @@ func (cfAppPush *CFAppPush) deploy(echoContext echo.Context) error {
 	log.Debugf("Source %v+", msg)
 
 	// Temporary folder for the application source
-	tempDir, err := os.MkdirTemp("", "cf-push-")
-	if err != nil {
-		log.Errorf("Error creating temporary directory: %s", err)
-		return err
-	}
-
+	tempDir, err := ioutil.TempDir("", "cf-push-")
 	defer os.RemoveAll(tempDir)
 
 	var appDir string
@@ -141,7 +137,7 @@ func (cfAppPush *CFAppPush) deploy(echoContext echo.Context) error {
 	case SOURCE_DOCKER_IMG:
 		stratosProject, appDir, err = getDockerURLSource(clientWebSocket, tempDir, msg)
 	default:
-		err = errors.New("unsupported source type; don't know how to get the source for the application")
+		err = errors.New("Unsupported source type; don't know how to get the source for the application")
 	}
 
 	if err != nil {
@@ -163,7 +159,7 @@ func (cfAppPush *CFAppPush) deploy(echoContext echo.Context) error {
 
 	if msgOverrides.Type != OVERRIDES_SUPPLIED {
 		log.Errorf("Expected app deploy override but received event with type: %v", msgOverrides.Type)
-		return errors.New("expected app deploy override message but received another type")
+		return errors.New("Expected app deploy override message but received another type")
 	}
 
 	log.Debugf("Overrides: %v+", msgOverrides)
@@ -247,7 +243,7 @@ func (cfAppPush *CFAppPush) deploy(echoContext echo.Context) error {
 	}
 
 	if msg.Type != CLOSE_ACK {
-		log.Errorf("Expected a close acknowledgement - got: %d", msg.Type)
+		log.Errorf("Expected a close acknowledgement - got: %s", string(rune(msg.Type)))
 	} else {
 		log.Debug("Got close acknowledgement from the client")
 	}
@@ -273,7 +269,7 @@ func getFolderSource(clientWebSocket *websocket.Conn, tempDir string, msg Socket
 		path := filepath.Join(tempDir, folder)
 		err := os.Mkdir(path, 0700)
 		if err != nil {
-			return StratosProject{}, tempDir, errors.New("failed to create folder")
+			return StratosProject{}, tempDir, errors.New("Failed to create folder")
 		}
 	}
 
@@ -294,7 +290,7 @@ func getFolderSource(clientWebSocket *websocket.Conn, tempDir string, msg Socket
 
 		// Expecting a file
 		if msg.Type != SOURCE_FILE {
-			return StratosProject{}, tempDir, errors.New("unexpected web socket message type")
+			return StratosProject{}, tempDir, errors.New("Unexpected web socket message type")
 		}
 
 		log.Debugf("Transferring file: %s", msg.Message)
@@ -307,12 +303,12 @@ func getFolderSource(clientWebSocket *websocket.Conn, tempDir string, msg Socket
 		}
 
 		if messageType != websocket.BinaryMessage {
-			return StratosProject{}, tempDir, errors.New("expecting binary file data")
+			return StratosProject{}, tempDir, errors.New("Expecting binary file data")
 		}
 
 		// Write the file
 		path := filepath.Join(tempDir, msg.Message)
-		err = os.WriteFile(path, p, 0644)
+		err = ioutil.WriteFile(path, p, 0644)
 		if err != nil {
 			return StratosProject{}, tempDir, err
 		}
@@ -336,9 +332,6 @@ func getFolderSource(clientWebSocket *websocket.Conn, tempDir string, msg Socket
 		log.Debug("Unpacking archive ......")
 		unpackPath := filepath.Join(tempDir, "application")
 		err := os.Mkdir(unpackPath, 0700)
-		if err != nil {
-			return StratosProject{}, tempDir, err
-		}
 
 		err = archiver.Unarchive(lastFilePath, unpackPath)
 		if err != nil {
@@ -346,7 +339,7 @@ func getFolderSource(clientWebSocket *websocket.Conn, tempDir string, msg Socket
 		}
 
 		// Just check to see if we actually unpacked into a root folder
-		contents, err := os.ReadDir(unpackPath)
+		contents, err := ioutil.ReadDir(unpackPath)
 		if err != nil {
 			return StratosProject{}, tempDir, err
 		}
@@ -368,7 +361,7 @@ func getFolderSource(clientWebSocket *websocket.Conn, tempDir string, msg Socket
 		}
 
 		if msg.Type != SOURCE_WAIT_ACK {
-			return StratosProject{}, tempDir, errors.New("expecting ACK message to begin deployment")
+			return StratosProject{}, tempDir, errors.New("Expecting ACK message to begin deployment")
 		}
 	}
 
@@ -397,27 +390,27 @@ func (cfAppPush *CFAppPush) getGitSCMSource(clientWebSocket *websocket.Conn, tem
 
 	loggerURL := info.URL
 	cloneURL := info.URL
-	skipSSL := false
+	skipSLL := false
 
 	// Apply credentials associated with the endpoint
 	if len(info.EndpointGUID) != 0 {
 		parsedURL, err := url.Parse(info.URL)
 		if err != nil {
-			return StratosProject{}, tempDir, errors.New("failed to parse SCM URL")
+			return StratosProject{}, tempDir, errors.New("Failed to parse SCM URL")
 		}
 
 		cnsiRecord, err := cfAppPush.portalProxy.GetCNSIRecord(info.EndpointGUID)
 		if err != nil {
-			return StratosProject{}, tempDir, errors.New("failed to find endpoint with guid " + info.EndpointGUID)
+			return StratosProject{}, tempDir, errors.New("Failed to find endpoint with guid " + info.EndpointGUID)
 		}
 
-		skipSSL = cnsiRecord.SkipSSLValidation
+		skipSLL = cnsiRecord.SkipSSLValidation
 
 		tokenRecord, isTokenFound := cfAppPush.portalProxy.GetCNSITokenRecord(info.EndpointGUID, userGUID)
 		if isTokenFound {
 			authTokenDecodedBytes, err := base64.StdEncoding.DecodeString(tokenRecord.AuthToken)
 			if err != nil {
-				return StratosProject{}, tempDir, errors.New("failed to decode auth token")
+				return StratosProject{}, tempDir, errors.New("Failed to decode auth token")
 			}
 
 			var (
@@ -435,11 +428,11 @@ func (cfAppPush *CFAppPush) getGitSCMSource(clientWebSocket *websocket.Conn, tem
 				username = tokenRecord.RefreshToken
 				password = string(authTokenDecodedBytes)
 			default:
-				return StratosProject{}, tempDir, fmt.Errorf("unknown SCM type '%s'", info.SCM)
+				return StratosProject{}, tempDir, fmt.Errorf("Unknown SCM type '%s'", info.SCM)
 			}
 
 			if len(username) == 0 {
-				return StratosProject{}, tempDir, errors.New("username is empty")
+				return StratosProject{}, tempDir, errors.New("Username is empty")
 			}
 
 			// mask the credentials for the logs and env var
@@ -458,7 +451,7 @@ func (cfAppPush *CFAppPush) getGitSCMSource(clientWebSocket *websocket.Conn, tem
 		LoggerUrl: loggerURL,
 		Branch:    info.Branch,
 		Commit:    info.CommitHash,
-		SkipSSL:   skipSSL,
+		SkipSSL:   skipSLL,
 	}
 	info.CommitHash, err = cloneRepository(cloneDetails, clientWebSocket, tempDir)
 	if err != nil {
@@ -530,19 +523,12 @@ func getDockerURLSource(clientWebSocket *websocket.Conn, tempDir string, msg Soc
 	applicationData := RawManifestApplication{
 		Name: info.ApplicationName,
 	}
-
 	manifest := Applications{
 		Applications: []RawManifestApplication{applicationData},
 	}
-
 	marshalledYaml, err := yaml.Marshal(manifest)
-	if err != nil {
-		return StratosProject{}, tempDir, err
-	}
-
 	manifestPath := fmt.Sprintf("%s/manifest.yml", tempDir)
-
-	err = os.WriteFile(manifestPath, marshalledYaml, 0600)
+	err = ioutil.WriteFile(manifestPath, marshalledYaml, 0600)
 	if err != nil {
 		log.Warnf("Failed to write manifest in path %s", manifestPath)
 		return StratosProject{}, tempDir, err
@@ -591,7 +577,7 @@ func (cfAppPush *CFAppPush) getConfigData(echoContext echo.Context, cnsiGUID str
 	if !found {
 		log.Warnf("Failed to retrieve record for CNSI %s", cnsiGUID)
 		sendErrorMessage(clientWebSocket, err, CLOSE_NO_CNSI_USERTOKEN)
-		return nil, errors.New("failed to find token record")
+		return nil, errors.New("Failed to find token record")
 	}
 
 	config := &CFPushAppConfig{
@@ -601,7 +587,6 @@ func (cfAppPush *CFAppPush) getConfigData(echoContext echo.Context, cnsiGUID str
 		APIEndpointURL:         cnsiRecord.APIEndpoint.String(),
 		DopplerLoggingEndpoint: cnsiRecord.DopplerLoggingEndpoint,
 		SkipSSLValidation:      cnsiRecord.SkipSSLValidation,
-		CACert:                 cnsiRecord.CACert,
 		AuthToken:              token.AuthToken,
 		OrgGUID:                orgGUID,
 		OrgName:                orgName,
@@ -617,7 +602,7 @@ func (cfAppPush *CFAppPush) getConfigData(echoContext echo.Context, cnsiGUID str
 func cloneRepository(cloneDetails CloneDetails, clientWebSocket *websocket.Conn, tempDir string) (string, error) {
 
 	if len(cloneDetails.Branch) == 0 {
-		err := errors.New("no branch supplied")
+		err := errors.New("No branch supplied")
 		log.Infof("Failed to checkout repo %s due to %+v", cloneDetails.LoggerUrl, err)
 		sendErrorMessage(clientWebSocket, err, CLOSE_FAILED_NO_BRANCH)
 		return "", err
@@ -677,12 +662,12 @@ func fetchManifest(repoPath string, stratosProject StratosProject, clientWebSock
 	if !fileExists(manifestPath) {
 		manifestPath = filepath.Join(repoPath, "manifest.yaml")
 		if !fileExists(manifestPath) {
-			return manifest, manifestPath, fmt.Errorf("can not find manifest file")
+			return manifest, manifestPath, fmt.Errorf("Can not find manifest file")
 		}
 	}
 
 	// Read the manifest
-	data, err := os.ReadFile(manifestPath)
+	data, err := ioutil.ReadFile(manifestPath)
 	if err != nil {
 		log.Warnf("Failed to read manifest in path %s", manifestPath)
 		sendErrorMessage(clientWebSocket, err, CLOSE_NO_MANIFEST)
@@ -715,7 +700,7 @@ func fetchManifest(repoPath string, stratosProject StratosProject, clientWebSock
 			sendErrorMessage(clientWebSocket, err, CLOSE_FAILURE)
 			return manifest, manifestPath, err
 		}
-		os.WriteFile(manifestPath, marshalledYaml, 0600)
+		ioutil.WriteFile(manifestPath, marshalledYaml, 0600)
 	}
 
 	return manifest, manifestPath, nil

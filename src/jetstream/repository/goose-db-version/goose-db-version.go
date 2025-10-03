@@ -1,11 +1,11 @@
 package goosedbversion
 
 import (
-	"github.com/cloudfoundry/stratos/src/jetstream/api"
+	"github.com/cloudfoundry-incubator/stratos/src/jetstream/repository/interfaces"
 )
 
 // Repository - the repository required to talk to this table of data
 type Repository interface {
-	GetCurrentVersion() (api.GooseDBVersionRecord, error)
-	List() ([]*api.GooseDBVersionRecord, error)
+	GetCurrentVersion() (interfaces.GooseDBVersionRecord, error)
+	List() ([]*interfaces.GooseDBVersionRecord, error)
 }
